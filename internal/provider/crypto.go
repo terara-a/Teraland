@@ -206,3 +206,18 @@ func decrypt(token string, k jose.JSONWebKey) (string, error) {
 	b, e := j.Decrypt(k.Key)
 	return string(b), e
 }
+
+// verifyRegistered applies the client's metadata restriction in addition to the
+// server's allowed algorithms and the JWK's own constraints.
+func verifyRegistered(raw string, keys jose.JSONWebKeySet, alg string) (object, error) {
+	if alg != "" {
+		j, _, err := parse(raw)
+		if err != nil {
+			return nil, err
+		}
+		if j.Signatures[0].Header.Algorithm != alg {
+			return nil, errors.New("registered signing algorithm mismatch")
+		}
+	}
+	return verify(raw, keys, "")
+}

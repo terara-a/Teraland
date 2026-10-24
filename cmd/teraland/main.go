@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -55,17 +57,41 @@ func main() {
 	server := &http.Server{Addr: *listen, Handler: p.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdown)
-	}()
 	log.Printf("Teraland listening on %s (issuer %s)", *listen, *issuer)
 	if len(anchors) == 0 {
 		log.Print("No trust anchors configured; federated registration is disabled")
 	}
-	if e = server.ListenAndServe(); e != nil && e != http.ErrServerClosed {
+	listener, e := net.Listen("tcp", *listen)
+	if e != nil {
 		log.Fatal(e)
+	}
+	if e = serve(ctx, server, listener); e != nil {
+		log.Fatal(e)
+	}
+}
+
+// serve waits until active handlers finish (or the shutdown deadline expires)
+// before allowing main to exit.
+func serve(ctx context.Context, server *http.Server, listener net.Listener) error {
+	result := make(chan error, 1)
+	go func() { result <- server.Serve(listener) }()
+	select {
+	case err := <-result:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdown); err != nil {
+			_ = server.Close()
+			return err
+		}
+		err := <-result
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
 	}
 }

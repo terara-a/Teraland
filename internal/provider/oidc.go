@@ -35,7 +35,7 @@ func (p *Provider) authenticate(r *http.Request, rp object, endpoint string) boo
 	if e != nil {
 		return false
 	}
-	m, e := verify(r.Form.Get("client_assertion"), ks, "")
+	m, e := verifyRegistered(r.Form.Get("client_assertion"), ks, text(rp, "token_endpoint_auth_signing_alg"))
 	if e != nil || validTimes(m, false) != nil {
 		return false
 	}
@@ -60,9 +60,8 @@ func (p *Provider) par(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "invalid_client")
 		return
 	}
-	a.Expires = time.Now().Add(90 * time.Second)
-	if exp := time.Unix(number(a.Claims, "exp"), 0); exp.Before(a.Expires) {
-		a.Expires = exp
+	if limit := time.Now().Add(90 * time.Second); limit.Before(a.Expires) {
+		a.Expires = limit
 	}
 	uri := "urn:ietf:params:oauth:request_uri:" + randomID()
 	p.mu.Lock()
@@ -121,7 +120,9 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	p.logins[id] = a
 	p.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: "teraland_login", Value: a.CSRF, Path: mustURL(p.config.Issuer).Path + "/login", HttpOnly: true, Secure: !p.config.Development, SameSite: http.SameSiteStrictMode, MaxAge: 300})
+	http.SetCookie(w, &http.Cookie{Name: "teraland_login_" + id, Value: a.CSRF, Path: mustURL(p.config.Issuer).Path + "/login", HttpOnly: true, Secure: !p.config.Development, SameSite: http.SameSiteStrictMode, MaxAge: 300})
+	callback := mustURL(text(a.Claims, "redirect_uri"))
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self' "+callback.Scheme+"://"+callback.Host+"; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = loginPage.Execute(w, object{"Action": p.config.Issuer + "/login", "ID": id, "Client": text(a.Claims, "client_id")})
 }
@@ -134,7 +135,7 @@ func (p *Provider) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.Form.Get("request_id")
-	cookie, e := r.Cookie("teraland_login")
+	cookie, e := r.Cookie("teraland_login_" + id)
 	if e != nil {
 		fail(w, 400, "invalid_request")
 		return
@@ -156,12 +157,13 @@ func (p *Provider) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_request")
 		return
 	}
+	http.SetCookie(w, &http.Cookie{Name: "teraland_login_" + id, Path: mustURL(p.config.Issuer).Path + "/login", HttpOnly: true, Secure: !p.config.Development, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 	if !equal(r.Form.Get("username"), p.config.Username) || !equal(r.Form.Get("password"), p.config.Password) {
 		fail(w, 401, "access_denied")
 		return
 	}
 	code := randomID()
-	g := grant{Client: text(a.Claims, "client_id"), Redirect: text(a.Claims, "redirect_uri"), Nonce: text(a.Claims, "nonce"), Scope: text(a.Claims, "scope"), Challenge: text(a.Claims, "code_challenge"), Subject: sha(p.config.Issuer + "\x00" + p.config.Username), Expires: time.Now().Add(time.Minute)}
+	g := grant{Client: text(a.Claims, "client_id"), Redirect: text(a.Claims, "redirect_uri"), Nonce: text(a.Claims, "nonce"), Scope: text(a.Claims, "scope"), Challenge: text(a.Claims, "code_challenge"), Subject: sha(p.config.Issuer + "\x00" + p.config.Username), AuthTime: time.Now().Unix(), Expires: time.Now().Add(time.Minute)}
 	p.mu.Lock()
 	if len(p.codes) > 10000 {
 		p.mu.Unlock()
@@ -227,7 +229,7 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Unix()
 	accessToken := randomID()
 	digest := sha256.Sum256([]byte(accessToken))
-	claims := object{"iss": p.config.Issuer, "sub": g.Subject, "aud": []string{id}, "iat": now, "exp": now + 300, "auth_time": now, "at_hash": base64.RawURLEncoding.EncodeToString(digest[:16])}
+	claims := object{"iss": p.config.Issuer, "sub": g.Subject, "aud": []string{id}, "iat": now, "exp": now + 300, "auth_time": g.AuthTime, "at_hash": base64.RawURLEncoding.EncodeToString(digest[:16])}
 	if g.Nonce != "" {
 		claims["nonce"] = g.Nonce
 	}

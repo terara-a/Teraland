@@ -30,6 +30,8 @@ type fixture struct {
 	mu           sync.Mutex
 	badStatement bool
 	policy       bool
+	metadata     object
+	trustExp     int64
 }
 
 func testKey(t *testing.T) jose.JSONWebKey {
@@ -68,6 +70,11 @@ func newFixture(t *testing.T) *fixture {
 			base["jwks"] = publicSet(f.entityKey)
 			base["authority_hints"] = []string{f.anchorID}
 			base["metadata"] = object{"openid_relying_party": object{"client_registration_types": []string{"automatic"}, "redirect_uris": []string{f.rpID + "/callback"}, "jwks_uri": f.rpID + "/jwks"}}
+			f.mu.Lock()
+			for name, value := range f.metadata {
+				asObject(asObject(base["metadata"])["openid_relying_party"])[name] = value
+			}
+			f.mu.Unlock()
 			k = f.entityKey
 		case "/anchor/fetch":
 			if r.URL.Query().Get("sub") != f.rpID {
@@ -79,6 +86,9 @@ func newFixture(t *testing.T) *fixture {
 			base["jwks"] = publicSet(f.entityKey)
 			k = f.anchor
 			f.mu.Lock()
+			if f.trustExp != 0 {
+				base["exp"] = f.trustExp
+			}
 			if f.badStatement {
 				k = f.entityKey
 			}

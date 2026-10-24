@@ -175,6 +175,9 @@ func (p *Provider) relyingParty(ctx context.Context, id string) (object, error) 
 	if method := text(rp, "token_endpoint_auth_method"); method != "" && method != "private_key_jwt" {
 		return nil, errors.New("private_key_jwt required")
 	}
+	if e := validateCryptoMetadata(rp); e != nil {
+		return nil, e
+	}
 	if rp["jwks"] != nil && rp["jwks_uri"] != nil {
 		return nil, errors.New("ambiguous RP keys")
 	}
@@ -220,7 +223,7 @@ func (p *Provider) requestObject(ctx context.Context, raw, clientID string) (aut
 	if e != nil {
 		return authRequest{}, e
 	}
-	claims, e = verify(raw, keys, "")
+	claims, e = verifyRegistered(raw, keys, text(rp, "request_object_signing_alg"))
 	if e != nil {
 		return authRequest{}, e
 	}
@@ -270,4 +273,27 @@ func (p *Provider) requestObject(ctx context.Context, raw, clientID string) (aut
 		exp = number(rp, "trust_exp")
 	}
 	return authRequest{Claims: claims, Client: rp, Expires: time.Unix(exp, 0)}, nil
+}
+
+func validateCryptoMetadata(rp object) error {
+	for _, name := range []string{"request_object_signing_alg", "token_endpoint_auth_signing_alg"} {
+		if value, exists := rp[name]; exists {
+			alg, ok := value.(string)
+			if !ok || (alg != "RS256" && alg != "PS256" && alg != "ES256") {
+				return errors.New("unsupported " + name)
+			}
+		}
+	}
+	if value, exists := rp["id_token_signed_response_alg"]; exists {
+		alg, ok := value.(string)
+		if !ok || alg != "RS256" {
+			return errors.New("only RS256 ID tokens supported")
+		}
+	}
+	for _, name := range []string{"id_token_encrypted_response_alg", "id_token_encrypted_response_enc"} {
+		if _, exists := rp[name]; exists {
+			return errors.New("encrypted ID tokens are not supported")
+		}
+	}
+	return nil
 }

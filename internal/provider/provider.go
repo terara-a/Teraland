@@ -34,6 +34,7 @@ type grant struct {
 	Scope     string
 	Challenge string
 	Subject   string
+	AuthTime  int64
 	Expires   time.Time
 }
 type authRequest struct {
@@ -144,6 +145,7 @@ func (p *Provider) Handler() http.Handler {
 	mux.HandleFunc("POST "+base+"/token", p.token)
 	mux.HandleFunc("POST "+base+"/login", p.login)
 	mux.HandleFunc("GET "+base+"/userinfo", p.userinfo)
+	mux.HandleFunc("POST "+base+"/userinfo", p.userinfo)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Pragma", "no-cache")
