@@ -3,8 +3,10 @@ package provider
 import (
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -213,5 +215,36 @@ func TestAuthenticationTimeAndPostUserInfo(t *testing.T) {
 	r.Body.Close()
 	if r.StatusCode != 401 {
 		t.Fatal("unauthenticated POST userinfo accepted")
+	}
+}
+
+func TestFederationSharedAddressSpace(t *testing.T) {
+	f := newFixture(t)
+	cfg := f.p.config
+	cfg.Development = false
+	cfg.Issuer = "https://op.example"
+	cfg.TrustAnchors = nil
+	production, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := production.client.Transport.(*http.Transport)
+	for _, address := range []string{"100.64.0.0", "100.64.0.1", "100.100.100.100", "100.127.255.255", "::ffff:100.64.0.0", "::ffff:100.100.100.100", "::ffff:100.127.255.255", "127.0.0.1", "::ffff:127.0.0.1", "::1", "10.0.0.1", "::ffff:10.0.0.1", "fc00::1", "fe80::1"} {
+		t.Run(address, func(t *testing.T) {
+			conn, err := transport.DialContext(t.Context(), "tcp", net.JoinHostPort(address, "443"))
+			if conn != nil {
+				conn.Close()
+				t.Fatal("non-public destination connected")
+			}
+			if err == nil || err.Error() != "non-public federation destination" {
+				t.Fatalf("destination was not rejected before connecting: %v", err)
+			}
+		})
+	}
+	// Adjacent global ranges must not be accidentally included in the /10 block.
+	for _, address := range []string{"100.63.255.255", "100.128.0.0", "::ffff:100.63.255.255", "::ffff:100.128.0.0", "8.8.8.8", "2606:4700:4700::1111"} {
+		if !publicFederationAddress(netip.MustParseAddr(address)) {
+			t.Errorf("public address incorrectly rejected: %s", address)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -106,7 +107,7 @@ func New(c Config) (*Provider, error) {
 			return nil, e
 		}
 		for _, ip := range ips {
-			if !c.Development && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || !ip.IsGlobalUnicast()) {
+			if !c.Development && !publicFederationAddress(ip) {
 				return nil, errors.New("non-public federation destination")
 			}
 		}
@@ -242,4 +243,13 @@ func (p *Provider) prune() {
 func equal(a, b string) bool {
 	aa, bb := sha(a), sha(b)
 	return subtle.ConstantTimeCompare([]byte(aa), []byte(bb)) == 1
+}
+
+var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+
+func publicFederationAddress(ip netip.Addr) bool {
+	// Normalize IPv4-mapped IPv6 so both representations get identical checks.
+	ip = ip.Unmap()
+	return ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() &&
+		!ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !sharedAddressSpace.Contains(ip)
 }
