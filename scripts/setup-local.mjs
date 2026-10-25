@@ -1,6 +1,7 @@
 import { generateKeyPair, exportJWK } from "jose";
 import { writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
+import { pathToFileURL } from "node:url";
 
 export async function privateJWK(alg, use) {
   const { privateKey } = await generateKeyPair(alg, {
@@ -14,7 +15,10 @@ export async function privateJWK(alg, use) {
     ...(use === "sig" ? { alg } : {}),
   };
 }
-if (import.meta.url === new URL(process.argv[1], "file:").href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const vars = {
     ISSUER: "http://localhost:8787",
     DEV_MODE: "true",

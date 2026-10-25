@@ -353,7 +353,7 @@ class Provider {
         challenge: str(a.claims, "code_challenge"),
         subject: await hash(this.c.issuer + "\0" + this.c.username),
         authTime: now(),
-        exp: Math.min(now() + 60, a.exp),
+        exp: Math.min(now() + 60, num(a.client, "trust_exp")),
       };
       await this.store.call("put", "code:" + (await hash(code)), g);
       response = callback(this.c, a, { code });

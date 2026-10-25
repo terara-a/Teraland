@@ -506,3 +506,65 @@ test("unapproved host, shared IP space and IPv4-mapped IPv6 never reach outbound
     assert.equal(seen.length, count);
   }
 });
+
+test("new authorization code has an independent lifetime capped by federation trust", async (t) => {
+  for (const par of [false, true])
+    for (const capped of [false, true])
+      await t.test(`par=${par}, trust cap=${capped}`, async () => {
+        trustExpiry = capped ? now() + 20 : 0;
+        try {
+          const c = claims();
+          c.exp = now() + 10;
+          const raw = await signed(rpKey, c);
+          let page;
+          if (par) {
+            const pushed = await request(
+              "/par",
+              await authParams("/par", { request: raw }),
+            );
+            assert.equal(pushed.status, 201);
+            const { request_uri } = await pushed.json();
+            const r = await request(
+              "/authorize?" +
+                new URLSearchParams({ client_id: rp, request_uri }),
+            );
+            assert.equal(r.status, 200);
+            const html = await r.text();
+            page = {
+              id: /name="request_id" value="([^"]+)"/.exec(html)[1],
+              cookie: r.headers.get("set-cookie").split(";")[0],
+            };
+          } else page = await loginPage(raw);
+          const before = now();
+          const response = await login(page);
+          assert.equal(response.status, 303);
+          const code = new URL(
+            response.headers.get("location"),
+          ).searchParams.get("code");
+          const ns = await mf.getDurableObjectNamespace("STATE");
+          const state = ns.get(ns.idFromName(issuer));
+          const key =
+            "code:" +
+            Buffer.from(
+              await crypto.subtle.digest(
+                "SHA-256",
+                new TextEncoder().encode(code),
+              ),
+            ).toString("base64url");
+          const stored = await state.fetch("https://state.internal/", {
+            method: "POST",
+            body: JSON.stringify({ op: "get", key }),
+          });
+          const grant = await stored.json();
+          if (capped) assert.equal(grant.exp, trustExpiry);
+          else assert.ok(grant.exp >= before + 60 && grant.exp <= now() + 60);
+          assert.ok(
+            grant.exp > c.exp,
+            "consumed request expiry must not truncate the new code",
+          );
+          assert.equal((await redeem(code)).status, 200);
+        } finally {
+          trustExpiry = 0;
+        }
+      });
+});
