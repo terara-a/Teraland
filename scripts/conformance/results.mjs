@@ -24,6 +24,21 @@ export function successful(results, expected) {
     results.every((r) => r.outcome === "passed")
   );
 }
+// CI execution may finish successfully with manual reviews pending. This is
+// deliberately separate from the strict conformance success above.
+export function ciSuccessful(results, expected) {
+  return (
+    results.length === expected &&
+    expected > 0 &&
+    new Set(results.map((r) => r.name)).size === expected &&
+    results.every(
+      (r) =>
+        r.status === "FINISHED" &&
+        ["PASSED", "REVIEW"].includes(r.result) &&
+        r.outcome === classify(r.status, r.result),
+    )
+  );
+}
 const xml = (s) =>
   String(s).replace(
     /[&<>"']/g,

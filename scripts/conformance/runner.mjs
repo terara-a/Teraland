@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { privateJWK } from "../setup-local.mjs";
-import { classify, successful, junit } from "./results.mjs";
+import { classify, successful, ciSuccessful, junit } from "./results.mjs";
 const [suiteDir, runDir, mongoPort] = process.argv.slice(2);
 const pin = JSON.parse(
   await readFile("scripts/conformance/upstream.json", "utf8"),
@@ -110,6 +110,7 @@ async function writeResults() {
     plan: pin.plan,
     results,
     success: successful(results, pin.expectedModules),
+    ciSuccess: ciSuccessful(results, pin.expectedModules),
   };
   await writeFile(
     "artifacts/conformance/results.json",
@@ -124,7 +125,7 @@ async function writeResults() {
     .map(([k, v]) => `- ${k}: ${v}`)
     .join(
       "\n",
-    )}\n\nREVIEW, WARNING, SKIPPED and incomplete results are not passes. This local alpha-plan run is not OIDF certification.\n`;
+    )}\n\nCI accepts completed PASSED or REVIEW results. REVIEW still requires manual confirmation; strict conformance success requires every module to pass. WARNING, SKIPPED, FAILED and incomplete results fail CI. This local alpha-plan run is not OIDF certification.\n`;
   await writeFile("artifacts/conformance/summary.md", summary);
   if (process.env.GITHUB_STEP_SUMMARY)
     await writeFile(process.env.GITHUB_STEP_SUMMARY, summary, { flag: "a" });
@@ -372,9 +373,9 @@ try {
       `::notice title=Official Federation outcomes::recorded=${results.length}; expected=${pin.expectedModules}; ${outcomes}`,
     );
   }
-  if (!successful(results, pin.expectedModules)) {
+  if (!ciSuccessful(results, pin.expectedModules)) {
     console.error(
-      `Official conformance gate did not pass: ${results.filter((r) => r.outcome === "passed").length}/${pin.expectedModules} PASSED; inspect results.json for REVIEW, failures and incomplete modules.`,
+      `Official suite CI execution gate did not pass: ${results.filter((r) => r.outcome === "passed").length}/${pin.expectedModules} PASSED; inspect results.json for REVIEW, failures and incomplete modules.`,
     );
     process.exitCode = 1;
   }

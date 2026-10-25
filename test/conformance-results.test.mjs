@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ciSuccessful,
   classify,
   successful,
   junit,
@@ -32,4 +33,37 @@ test("official conformance gate requires every expected module to finish and pas
       "x&lt;&amp;&quot;",
     ),
   );
+});
+
+test("CI accepts completed manual reviews without changing strict conformance results", () => {
+  const passed = {
+    name: "positive",
+    status: "FINISHED",
+    result: "PASSED",
+    outcome: "passed",
+  };
+  const review = {
+    name: "negative",
+    status: "FINISHED",
+    result: "REVIEW",
+    outcome: "review",
+  };
+  assert.equal(ciSuccessful([passed, review], 2), true);
+  assert.equal(successful([passed, review], 2), false);
+  assert.ok(junit([review]).includes('type="review"'));
+  for (const result of ["FAILED", "WARNING", "SKIPPED", "UNKNOWN"]) {
+    assert.equal(
+      ciSuccessful(
+        [{ ...review, result, outcome: classify("FINISHED", result) }],
+        1,
+      ),
+      false,
+    );
+  }
+  assert.equal(ciSuccessful([{ ...review, status: "WAITING" }], 1), false);
+  assert.equal(ciSuccessful([{ ...review, result: "FAILED" }], 1), false);
+  assert.equal(ciSuccessful([], 0), false);
+  assert.equal(ciSuccessful([], 20), false);
+  assert.equal(ciSuccessful([passed, review], 20), false);
+  assert.equal(ciSuccessful([review, review], 2), false);
 });

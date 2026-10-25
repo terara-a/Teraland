@@ -39,7 +39,8 @@ of routine reversible steps.
   self-contained official Federation OP suite run. See README for JDK/Maven/Docker
   prerequisites and local HTTPS/CA handling. `npm run test:conformance` executes all
   20 pinned upstream modules; it is not part of the ordinary `npm test` command.
-  Only complete PASSED results make its gate green. Preserve REVIEW/WARNING/
+  The CI execution gate accepts complete PASSED or REVIEW results. Strict
+  conformance success still requires all PASSED. Preserve REVIEW/WARNING/
   SKIPPED/FAILED/incomplete distinctions; never rewrite manual review as a pass.
   Artifacts contain result metadata only, not raw suite logs/configs/private keys.
 

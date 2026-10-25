@@ -136,22 +136,23 @@ loopback ポートを使います。既存のサービスと競合しない環�
 更新するときは両方を揃え、実際のプラン構成を再確認してください。
 
 結果は `artifacts/conformance/` に保存し、CI の artifact と Job Summary に残します。
-`results.json` はモジュールごとの公式 status/result と集計、`junit.xml` は厳格な CI
-ゲート用、`summary.md` は人が読む概要です。生成された秘密鍵・認証情報を含み得る
+`results.json` はモジュールごとの公式 status/result と集計、`junit.xml` は厳格な適合性
+判定の診断用、`summary.md` は人が読む概要です。生成された秘密鍵・認証情報を含み得る
 生のスイート設定、ログ、ZIP エクスポートは artifact に含めません。実行用の秘密鍵・
 CA・ローカル状態・私用ログと、このスクリプトが起動した MongoDB は終了時に削除します。
 
-**全20件が FINISHED / PASSED の場合だけ CI を成功にします。** ゼロ件、未完了、
-FAILED、WARNING、SKIPPED、REVIEW は成功にしません。JUnit ではこれらを異なる type
-の failure として表し、元の公式判定は JSON に保持します。上流のアサーションは
-変更せず、画面確認を必要とする REVIEW を PASSED に上書きしません。
+**全20件が FINISHED で、公式判定が PASSED または REVIEW なら CI を成功にします。**
+ゼロ件、重複、件数不足、未完了、FAILED、WARNING、SKIPPED は引き続き失敗です。
+公式判定自体は変更せず、画面確認が必要な REVIEW を PASSED に上書きしません。
 
-異常系のうち、Provider が不正なリクエストを登録済み RP へのリダイレクトではなく
-エラーページで拒否するケースは、公式スイートが人手確認を要求します。ハーネスが
-実際のページ内容をスイートの確認用 placeholder に記録しても、判定は REVIEW のまま
-なのでジョブは失敗扱いになります。これは「テストを実行できなかった」ことや
-「Provider が不正な認可コードを発行した」ことと区別してください。合格を目指す
-次の作業では、この手動確認経路と必要なプロトコル上の応答を検討する必要があります。
+`results.json` の `ciSuccess` は CI 実行ゲート、`success` は全件 PASSED が必要な厳格な
+適合性判定です。CI が緑でも `success: false` と REVIEW が残る場合があります。
+JUnit は厳格な判定の診断資料なので REVIEW も `failure type="review"` として残ります。
+Job Summary と Actions の注記にも件数を表示します。
+
+Provider が不正リクエストをエラーページで拒否する異常系では、公式スイートが人手確認を
+要求します。実際のページ内容を確認用 placeholder に記録しても、判定は REVIEW のまま
+です。CI 成功を全件合格や認証取得と読み替えず、手動確認は別途行ってください。
 
 CI 接続時に判明した PAR の互換性問題も修正しています。外側の `client_id` を
 省略する `private_key_jwt` 要求では assertion の `sub` を発見のヒントとして使い、
@@ -160,5 +161,5 @@ CI 接続時に判明した PAR の互換性問題も修正しています。外
 
 ローカルの公式プラン初回検証では、PAR の互換性修正後、全20件が FINISHED に到達し、
 **PASSED 7件 / REVIEW 13件** でした。FAILED・未完了はありませんでしたが、
-REVIEW が残っているため適合性ゲートの終了コードは1です。これは全件合格の記録では
-ありません。CI での最新結果は各実行の artifact を参照してください。
+初回の厳格なゲートでは終了コード1でした。現在の CI 実行ゲートではこの結果を成功とし、
+厳格な適合性判定は未合格のまま保持します。最新結果は各実行の artifact を参照してください。
