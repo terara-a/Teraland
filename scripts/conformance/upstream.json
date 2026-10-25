@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/openid-certification/conformance-suite.git",
+  "commit": "f23736032b52739e5262c91263ee102a7bc6ce1a",
+  "plan": "openid-federation-entity-joined-to-test-federation-op-test-plan",
+  "expectedModules": 20,
+  "mongoImage": "mongo:6.0.13@sha256:b415b12f638e2685d06c58ab7fb5943577c50fadec6d9340ef67d21aeac72070"
+}

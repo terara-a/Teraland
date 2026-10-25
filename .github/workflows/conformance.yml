@@ -1,0 +1,51 @@
+name: Official Federation conformance
+on:
+  pull_request:
+    paths-ignore: ["**/*.md"]
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: federation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  official-federation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check out the pinned official suite
+        uses: actions/checkout@v6
+        with:
+          repository: openid-certification/conformance-suite
+          ref: f23736032b52739e5262c91263ee102a7bc6ce1a
+          path: .local/conformance-suite
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: .local/conformance-suite/pom.xml
+      - run: npm ci
+      - name: Permit the unprivileged local HTTPS listener
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+      - name: Run all official Federation OP modules against the local Worker
+        run: npm run test:conformance
+      - name: Preserve result metadata (never private suite logs or keys)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: official-federation-results
+          path: artifacts/conformance/
+          if-no-files-found: warn
+          retention-days: 7

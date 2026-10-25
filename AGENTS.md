@@ -35,6 +35,13 @@ of routine reversible steps.
   fetch, not by bypassing signature or trust verification.
 - `wrangler.jsonc`: bindings, migrations and non-secret deployment settings.
 - `.github/workflows/ci.yml`: install, formatting, typecheck and integration tests.
+- `.github/workflows/conformance.yml` and `scripts/conformance/`: a separate,
+  self-contained official Federation OP suite run. See README for JDK/Maven/Docker
+  prerequisites and local HTTPS/CA handling. `npm run test:conformance` executes all
+  20 pinned upstream modules; it is not part of the ordinary `npm test` command.
+  Only complete PASSED results make its gate green. Preserve REVIEW/WARNING/
+  SKIPPED/FAILED/incomplete distinctions; never rewrite manual review as a pass.
+  Artifacts contain result metadata only, not raw suite logs/configs/private keys.
 
 ## Development and verification
 
