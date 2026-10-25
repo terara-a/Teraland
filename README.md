@@ -1,89 +1,98 @@
 # Teraland
 
-Go 製の OpenID Provider。まず OpenID Federation の **OP 自動クライアント登録テスト**を対象にした、小さな実装です。OIDF の認証取得済み製品ではありません。公式スイートでの合格はまだ確認していません。
+Cloudflare Workers 向けの TypeScript 製 OpenID Provider。OpenID Federation の OP 自動クライアント登録テストを最初の目標にしています。Go 版を移植し、認可コード・PAR・ログイン・アクセストークン・リプレイ記録を SQLite-backed Durable Objects に移しました。
 
-## 起動
+**公式適合性テストの合格は未確認です。個人 PoC 用であり、実ユーザーの認証基盤としての準備は完了していません。**
 
-Go 1.26 以降が必要です。外部 DB は不要です。
+## ローカル開発
 
-```bash
-# 開発用の例。本番では固有の認証情報を安全に注入してください。
-export TERALAND_USERNAME=alice
-export TERALAND_PASSWORD='local-development-password'
-go run ./cmd/teraland -dev
-```
-
-既定の待ち受けは `127.0.0.1:8080`、issuer は `http://localhost:8080` です。`GET /healthz`、`GET /.well-known/openid-configuration`、`GET /.well-known/openid-federation` で確認できます。
-
-**信頼アンカー未設定では、Federation による RP 登録はすべて拒否します。** Discovery と鍵の公開だけで RP が信頼されることはありません。
+Node.js 24 を推奨します。Cloudflare アカウントなしでローカルテストできます。
 
 ```bash
-go run ./cmd/teraland \
-  -issuer https://op.example.com \
-  -listen 127.0.0.1:8080 \
-  -data-dir .local/teraland \
-  -trust-anchor https://federation.example.com/anchor \
-  -trust-anchor-jwks .local/trust-anchor.jwks.json
+npm ci
+npm run setup:local
+npm run dev
 ```
 
-`-trust-anchor-jwks` は、そのアンカーの**公開鍵だけ**を含む JWKS ファイルです。信頼できる経路で入手した鍵を固定してください。取得した任意の自己署名 Entity Configuration を、そのまま新たな信頼アンカーとして扱ってはいけません。
+`setup:local` は秘密鍵と開発用アカウントを生成し、Git 管理外の `.dev.vars` に権限 `0600` で保存します。既存ファイルは上書きしません。ログイン情報はそのファイルで手元で確認してください。キーやパスワードをログ・チャット・コミットに貼らないでください。
 
-HTTPS の終端はリバースプロキシで行い、issuer と外部 URL を一致させてください。issuer のパス接頭辞にも対応します。`-dev` は HTTP とプライベート IP への Federation アクセスを許可するため、ローカル開発専用です。通常モードでは外部文書の取得時に private / loopback / link-local IP とリダイレクトを拒否します。外向き HTTP は直接接続し、環境の HTTP proxy 設定は利用しません。
+既定のローカル issuer は `http://localhost:8787`。`DEV_MODE=true` の場合だけ localhost の HTTP issuer を許可します。Federation 文書の取得先は開発時も HTTPS に限定します。
 
-秘密鍵は `.local/teraland/` に初回生成し、再起動後も維持します。ディレクトリを保護・永続化してください。認可コード、PAR、アクセストークン、ログイン要求、リプレイ記録はメモリ上にあり、再起動で失効します。単一プロセスで動かしてください。
-
-## 実装した範囲
-
-- RS256 署名の Entity Configuration（`application/entity-statement+jwt`）、OIDC Discovery、公開 JWKS。
-- RP の authority hints から固定した trust anchor までの信頼チェーン構築。各 Entity Configuration と subordinate statement の署名、issuer、subject、有効期限、鍵の結び付きを検証。
-- 検証済み RP metadata による automatic registration。Federation 用鍵と OIDC クライアント用鍵を分離。
-- GET / POST の JAR、PAR、`private_key_jwt`、認可コード、S256 PKCE、ID Token、Bearer UserInfo。
-- JWS: RS256 / PS256 / ES256 のリクエスト検証。JWE: RSA-OAEP-256 / RSA-OAEP + A256GCM の署名付きリクエスト復号。
-- request object の必須 `iss` / `aud` / `exp` / `jti`、`client_id` の一致、禁止された `sub`、登録済み redirect URI、署名、期限、リプレイを検証。
-- ログイン画面と明示的な許可。CSRF Cookie、Origin 検査、HTML エスケープ、CSP、トークン応答のキャッシュ抑止。
-
-`trust_chain` JWS header を含むリクエストも受理しますが、ヘッダーのチェーンを信頼根拠にせず、ネットワークからチェーンを独立に再構築します。独自の policy / constraints / critical extension は未実装で、存在するチェーンは安全側に拒否します。
-
-## 適合性テスト
-
-対象の案内: <https://openid.net/certification/federation_testing/>
-
-初期ターゲットは公式スイートの以下のプランです。
-
-```text
-openid-federation-entity-joined-to-test-federation-op-test-plan
-```
-
-実装時には公式リポジトリのコミット `f23736032b52739e5262c91263ee102a7bc6ce1a` のテストコードを参照しました。
-
-- [OP test plan](https://github.com/openid-certification/conformance-suite/blob/f23736032b52739e5262c91263ee102a7bc6ce1a/src/main/java/net/openid/conformance/openid/federation/OpenIDFederationClientRegistrationOPTestPlan.java)
-- [Deployed entity test plan](https://github.com/openid-certification/conformance-suite/blob/f23736032b52739e5262c91263ee102a7bc6ce1a/src/main/java/net/openid/conformance/openid/federation/OpenIDFederationDeployedEntityTestPlan.java)
-
-この版の両プランは `alpha`、`certifiable = false` です。公開スイートの版・提供状況は別途確認してください。
-
-### 公式スイートにつなぐ手順
-
-1. Teraland を、スイートから到達できる、有効な証明書を持つ HTTPS issuer で起動する。スイート自身の Federation endpoint も Teraland から到達できる必要があります。
-2. OP プランを作成し、`federation.entity_identifier` に Teraland の issuer を指定する。`client_registration=automatic` と discovery による metadata 取得を選び、スイートが必要とする RP 用鍵・trust anchor 用鍵を設定する。
-3. 構成されたテストが公開する trust anchor の entity identifier と、それに対応する公開 JWKS を確認する。その identifier と JWKS を上記の CLI オプションに設定して Teraland を再起動する。テスト・alias が変わった場合は一致を再確認する。
-4. 正常系のブラウザー操作では、`username`、`password` を入力してログイン・許可する。自動ブラウザー操作を使う場合もこのフォームに合わせる。
-5. 異常系は JSON の HTTP 400 応答を表示する場合があります。未検証の redirect URI へは転送しません。スイートが画面の確認を求めるケースでは、エラー画面の証跡を登録する。
-6. プランを実行し、その実行結果を保存する。下記ローカルテストの成功を、公式テストの合格として扱わない。
-
-**今回、公式スイートのプラン実行は行っていません。** 公開 HTTPS issuer、スイートの trust anchor 設定、ブラウザー操作を含む実環境の接続は未検証です。案内ページは作業環境のアクセス制限で取得できなかったため、取得できた公式テストコードに基づいています。
-
-### ローカルでの検証
+`GET /healthz`、`GET /.well-known/openid-configuration`、`GET /.well-known/openid-federation` で起動を確認できます。信頼アンカー未設定では RP 登録を拒否します。Wrangler のローカル状態は `.wrangler/` に保存され、本番の Durable Objects とは独立しています。
 
 ```bash
-go test -race -count=1 ./...
-go vet ./...
-go build -o .local/bin/teraland ./cmd/teraland
+npm run typecheck
+npm test
+npm run format:check
+npm run build
 ```
 
-テストは実際の HTTP サーバーで RP と trust anchor を模擬し、署名付き Federation 文書を取得するところから、ログイン、コード交換、ID Token の署名検証、UserInfo まで実行します。GET / POST JAR、PAR、両方の JWE アルゴリズム、PKCE と、署名・クレーム・チェーン・リプレイ・CSRF の拒否を検証します。GitHub Actions にも race test / vet / build を登録しています。
+`build` は Wrangler の dry-run です。デプロイや課金対象リソースの作成は行いません。テストは Miniflare/workerd で Worker と SQLite Durable Objects を実際に動かし、署名付き Federation 文書を模擬します。JAR GET/POST、PAR、JWE、PKCE、ログイン、ID Token、GET/POST UserInfo、不正な署名・クレーム・チェーン・リプレイ・CSRF、再起動後の状態維持、同時コード交換の一度限りの成功を検証します。
 
-## 今後の範囲
+## Cloudflare へのデプロイ
 
-これはテスト接続用の最初の実装です。metadata policy の合成、constraints、trust marks、explicit registration、fetch / list / resolve を提供する intermediary / trust anchor の役割、鍵ローテーションは未実装です。Deployed entity プラン全体への適合も未確認です。
+このリポジトリからの本番デプロイはまだ実行していません。Workers と SQLite Durable Objects を使います。無料プランの提供条件・利用上限は申込時に確認してください。無料枠内の利用を保証する構成ではありません。
 
-ユーザー認証は環境変数で設定する単一アカウントです。実運用にはユーザー管理、パスワードハッシュ、レート制限・監査、共有永続ストア、セッション管理、鍵ローテーションなどを追加する必要があります。現時点で実ユーザー向けの認証基盤として公開しないでください。
+1. `npx wrangler login` で自分のアカウントにログインする。
+2. `wrangler.jsonc` の `ISSUER` を実際の Workers 公開 HTTPS URL に変更する。末尾の `/`、query、fragment は付けない。`name` も必要に応じて変更する。
+3. `FEDERATION_HOSTS` に RP、trust anchor、intermediary、JWKS endpoint が使うホスト名を JSON 配列文字列で設定する。完全一致・小文字の DNS ホスト名だけを許可し、ワイルドカードや IP リテラルは許可しない。
+4. `TRUST_ANCHORS` を、entity identifier をキー、公開 JWKS を値とする JSON オブジェクト文字列に設定する。鍵は信頼できる別経路で確認したものだけを固定する。
+5. 下記の4個の Secrets を設定する。
+6. `npm run deploy` を実行し、公開 URL の health/discovery/entity configuration を確認する。
+
+```bash
+npx wrangler secret put SIGNING_JWK
+npx wrangler secret put ENCRYPTION_JWK
+npx wrangler secret put TERALAND_USERNAME
+npx wrangler secret put TERALAND_PASSWORD
+```
+
+- `SIGNING_JWK`: 秘密鍵を含む RSA 2048 bit 以上の JWK JSON。`kid`、`use: "sig"`、`alg: "RS256"` を設定。
+- `ENCRYPTION_JWK`: 署名鍵と異なる RSA 秘密 JWK JSON。固有の `kid` と `use: "enc"` を設定。両方の OAEP アルゴリズムで使うため `alg` は省略。
+- `TERALAND_USERNAME`: PoC 用単一アカウント。
+- `TERALAND_PASSWORD`: 12文字以上の固有のパスワード。
+
+公開鍵は `/jwks` に出ますが、秘密鍵は公開しません。既存 Go 版から同じ issuer で移行する場合、`.local/teraland/signing.jwk` と `encryption.jwk` は同じ JWK 形式なので Secrets に移せます。既存鍵を失効させる意図がなければ作り直さないでください。Go 版のメモリ上にあった一時状態は移行できません。
+
+`ISSUER` ごとに同じ Durable Object を選び、期限付きレコードをトランザクションで保存・消費します。再起動でリプレイ記録を失わず、同時リクエストが同じコードを二度使うことも防ぎます。期限切れレコードは alarm で掃除します。issuer 変更は別の状態領域になります。
+
+## Federation の設定例
+
+`wrangler.jsonc` の `vars` の該当部分を編集します。公開鍵は実際の値を設定してください。
+
+```json
+{
+  "FEDERATION_HOSTS": "[\"rp.example.com\",\"anchor.example.com\"]",
+  "TRUST_ANCHORS": "{\"https://anchor.example.com\":{\"keys\":[...]}}"
+}
+```
+
+取得先 URL は HTTPS/443 のみ、リダイレクトは追跡せず、文書サイズ・回数・時間に上限を設けています。IP リテラルは共有アドレス空間 `100.64.0.0/10` と IPv4-mapped IPv6 を含めて拒否します。
+
+Workers の Fetch API では DNS の解決先 IP を直接検査してソケットに固定できません。**許可リストには管理者が信頼するホストだけを登録してください。** この制限は Go 版の DNS/IP 検査と異なります。任意の未登録ホストの RP を発見・登録する設計ではありません。
+
+## 実装範囲
+
+- RS256 署名 Entity Configuration、OIDC Discovery、公開 JWKS。
+- 固定 trust anchor までのチェーン構築と、各署名・issuer・subject・期限・鍵の結び付けの検証。
+- automatic registration、登録済み署名アルゴリズムと redirect URI の適用。
+- JAR GET/POST、PAR、private_key_jwt、認可コード、S256 PKCE、RS256 ID Token、GET/POST Bearer UserInfo。
+- RS256 / PS256 / ES256 の署名検証。RSA-OAEP-256 / RSA-OAEP + A256GCM の JWE。
+- 必須クレーム、禁止された sub、不正署名、リプレイ、信頼期限の検査。
+- 要求ごとの CSRF Cookie、Origin 検査、HTML エスケープ、検証済み RP コールバックへの遷移を許可する CSP。
+
+`trust_chain` header 自体は信用せず、ネットワークからチェーンを再構築します。未対応の metadata policy / constraints / critical extension を含むチェーン、未対応の ID Token 署名・暗号化要求は拒否します。
+
+## 公式適合性テスト
+
+案内: <https://openid.net/certification/federation_testing/>
+
+最初の対象プランは `openid-federation-entity-joined-to-test-federation-op-test-plan` です。参照した公式テストコードは [コミット f237360](https://github.com/openid-certification/conformance-suite/tree/f23736032b52739e5262c91263ee102a7bc6ce1a)。その版は alpha / certifiable=false です。
+
+公開 HTTPS issuer を用意し、スイート側の `federation.entity_identifier` に設定します。スイートが公開する trust anchor の identifier と公開鍵を `TRUST_ANCHORS` に、その関連ホストを `FEDERATION_HOSTS` に設定します。RP 自体の issuer、JWKS、anchor の各 endpoint が双方から到達可能である必要があります。スイートのブラウザー操作では `username` / `password` のフォームを使います。
+
+**ローカルテストの成功を公式スイートの合格と読み替えないでください。** 公開 Cloudflare 上での動作・スイート接続は未検証です。
+
+## 未対応
+
+metadata policy の合成、constraints、trust marks、explicit registration、intermediary / trust anchor としての fetch/list/resolve、鍵ローテーション、ユーザー管理、パスワードハッシュ、レート制限、監査・運用監視は未実装です。Go サーバーの graceful shutdown は Workers のプラットフォーム管理に置き換わりました。Go のファイル・メモリ保存方式は使用しません。

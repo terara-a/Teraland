@@ -35,3 +35,11 @@ go.work.sum
 # Teraland local keys, binaries, and configuration
 .local/
 /teraland
+
+# Workers / TypeScript
+node_modules/
+.build/
+.wrangler/
+.dev.vars
+.dev.vars.*
+*.tsbuildinfo
