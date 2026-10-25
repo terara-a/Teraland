@@ -568,3 +568,35 @@ test("new authorization code has an independent lifetime capped by federation tr
         }
       });
 });
+
+test("PAR can identify a private_key_jwt client from sub without an outer client_id", async () => {
+  const params = await authParams("", {
+    request: await signed(rpKey, claims()),
+  });
+  delete params.client_id;
+  assert.equal((await request("/par", params)).status, 201);
+  const mismatch = await authParams("", {
+    request: await signed(rpKey, claims()),
+  });
+  delete mismatch.client_id;
+  mismatch.client_assertion = await signed(rpKey, {
+    iss: "https://attacker.example",
+    sub: rp,
+    aud: issuer,
+    jti: crypto.randomUUID(),
+    exp: now() + 60,
+  });
+  assert.equal((await request("/par", mismatch)).status, 401);
+  const forged = await authParams("", {
+    request: await signed(rpKey, claims()),
+  });
+  delete forged.client_id;
+  forged.client_assertion = await signed(entityKey, {
+    iss: rp,
+    sub: rp,
+    aud: issuer,
+    jti: crypto.randomUUID(),
+    exp: now() + 60,
+  });
+  assert.equal((await request("/par", forged)).status, 401);
+});

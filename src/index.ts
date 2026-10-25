@@ -1,7 +1,15 @@
 import { limitedText } from "./http";
 import { base64url } from "jose";
 import { Federation, identifier } from "./federation";
-import { publicKey, sign, verify, keySet, hash, equal } from "./crypto";
+import {
+  publicKey,
+  sign,
+  verify,
+  keySet,
+  hash,
+  equal,
+  unverified,
+} from "./crypto";
 import { Store } from "./state";
 import {
   obj,
@@ -250,7 +258,11 @@ class Provider {
     try {
       a = await this.federation.request(
         f.get("request") ?? "",
-        f.get("client_id") ?? "",
+        // With private_key_jwt, sub supplies the client identity when the
+        // outer client_id is absent. This is only a discovery hint: both the
+        // request object and the assertion are independently verified below.
+        f.get("client_id") ??
+          str(unverified(f.get("client_assertion") ?? ""), "sub"),
       );
     } catch {
       return fail("invalid_request_object");

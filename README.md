@@ -91,8 +91,75 @@ Workers の Fetch API では DNS の解決先 IP を直接検査してソケッ�
 
 公開 HTTPS issuer を用意し、スイート側の `federation.entity_identifier` に設定します。スイートが公開する trust anchor の identifier と公開鍵を `TRUST_ANCHORS` に、その関連ホストを `FEDERATION_HOSTS` に設定します。RP 自体の issuer、JWKS、anchor の各 endpoint が双方から到達可能である必要があります。スイートのブラウザー操作では `username` / `password` のフォームを使います。
 
-**ローカルテストの成功を公式スイートの合格と読み替えないでください。** 公開 Cloudflare 上での動作・スイート接続は未検証です。
+**ローカルテストの成功を公式スイートの合格と読み替えないでください。** 公開 Cloudflare 上での動作・公開スイートへの接続は未検証です。ローカルでの公式スイート実行は、次の CI 手順と結果を参照してください。
 
 ## 未対応
 
 metadata policy の合成、constraints、trust marks、explicit registration、intermediary / trust anchor としての fetch/list/resolve、鍵ローテーション、ユーザー管理、パスワードハッシュ、レート制限、監査・運用監視は未実装です。Go サーバーの graceful shutdown は Workers のプラットフォーム管理に置き換わりました。Go のファイル・メモリ保存方式は使用しません。
+
+## CI 内での公式適合性テスト
+
+通常の `TypeScript Workers` ジョブとは別に、`Official Federation conformance`
+ワークフローを追加しています。PR と main への push（文書だけの変更を除く）で
+実行し、Actions の **Run workflow** からも手動実行できます。
+
+公開デプロイ、Cloudflare アカウント、GitHub Secrets の追加は不要です。
+固定コミットの公式 OpenID Foundation スイートを Java 21 でビルドし、MongoDB と
+Miniflare/workerd の Worker を CI 内で起動します。公式プランの全20モジュールを
+API から順番に実行し、公式の HtmlUnit ブラウザー操作でログインやエラーページを
+処理します。Chromium の独立したブラウザーテストではありません。
+
+`op.teraland.test` と `suite.teraland.test` の HTTPS 接続には、その実行だけの CA と
+証明書を生成します。Java の専用 truststore と Node の HTTPS Agent に CA を設定し、
+証明書・ホスト名の検証を維持します。DNS 対応付けはテストハーネス内だけで行い、
+Worker の署名検証・信頼アンカー検証・ホスト許可リストはそのまま通します。
+スイートの開発用認証は loopback 限定のサーバーでのみ使います。
+
+ローカルで同じ実行をする場合:
+
+```bash
+# Node.js 24 / 完全な JDK 21（JRE だけでは不可）/ Maven 3.9+ /
+# Docker / OpenSSL / Git が必要です。Java の keytool も使います。
+npm ci
+npm run test:conformance
+```
+
+Linux で非特権プロセスが443番へ bind できない場合は、CI と同じ一時環境で
+`sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0` を設定してください。
+HTTPS は `127.0.0.1:443`、Java サーバーは `127.0.0.1:18080`、MongoDB は動的な
+loopback ポートを使います。既存のサービスと競合しない環境で実行してください。
+
+公式スイートは `.local/conformance-suite/` に取得します。
+`CONFORMANCE_SUITE_DIR` で既存の checkout を指定できますが、指定された固定 SHA と
+一致し、追跡ファイルに変更がない必要があります。固定 SHA とモジュール数は
+`scripts/conformance/upstream.json`、CI の checkout SHA は workflow にも記載しています。
+更新するときは両方を揃え、実際のプラン構成を再確認してください。
+
+結果は `artifacts/conformance/` に保存し、CI の artifact と Job Summary に残します。
+`results.json` はモジュールごとの公式 status/result と集計、`junit.xml` は厳格な適合性
+判定の診断用、`summary.md` は人が読む概要です。生成された秘密鍵・認証情報を含み得る
+生のスイート設定、ログ、ZIP エクスポートは artifact に含めません。実行用の秘密鍵・
+CA・ローカル状態・私用ログと、このスクリプトが起動した MongoDB は終了時に削除します。
+
+**全20件が FINISHED で、公式判定が PASSED または REVIEW なら CI を成功にします。**
+ゼロ件、重複、件数不足、未完了、FAILED、WARNING、SKIPPED は引き続き失敗です。
+公式判定自体は変更せず、画面確認が必要な REVIEW を PASSED に上書きしません。
+
+`results.json` の `ciSuccess` は CI 実行ゲート、`success` は全件 PASSED が必要な厳格な
+適合性判定です。CI が緑でも `success: false` と REVIEW が残る場合があります。
+JUnit は厳格な判定の診断資料なので REVIEW も `failure type="review"` として残ります。
+Job Summary と Actions の注記にも件数を表示します。
+
+Provider が不正リクエストをエラーページで拒否する異常系では、公式スイートが人手確認を
+要求します。実際のページ内容を確認用 placeholder に記録しても、判定は REVIEW のまま
+です。CI 成功を全件合格や認証取得と読み替えず、手動確認は別途行ってください。
+
+CI 接続時に判明した PAR の互換性問題も修正しています。外側の `client_id` を
+省略する `private_key_jwt` 要求では assertion の `sub` を発見のヒントとして使い、
+その後 request object と assertion の署名・issuer・subject を独立に検証します。
+未検証の `sub` を認証済みの identity として扱うことはありません。
+
+ローカルの公式プラン初回検証では、PAR の互換性修正後、全20件が FINISHED に到達し、
+**PASSED 7件 / REVIEW 13件** でした。FAILED・未完了はありませんでしたが、
+初回の厳格なゲートでは終了コード1でした。現在の CI 実行ゲートではこの結果を成功とし、
+厳格な適合性判定は未合格のまま保持します。最新結果は各実行の artifact を参照してください。
