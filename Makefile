@@ -1,10 +1,13 @@
-.PHONY: test build vet
+.PHONY: test build typecheck dev
 
 test:
-	go test -race -count=1 ./...
-
-vet:
-	go vet ./...
+	npm test
 
 build:
-	go build -o .local/bin/teraland ./cmd/teraland
+	npm run build
+
+typecheck:
+	npm run typecheck
+
+dev:
+	npm run dev
