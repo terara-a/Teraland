@@ -46,6 +46,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: official-federation-results
-          path: artifacts/conformance/
+          path: |
+            artifacts/conformance/results.json
+            artifacts/conformance/junit.xml
+            artifacts/conformance/summary.md
           if-no-files-found: warn
           retention-days: 7

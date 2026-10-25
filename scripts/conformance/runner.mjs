@@ -357,6 +357,21 @@ try {
     console.log(`${name}: ${result.status} / ${result.result}`);
     await writeResults();
   }
+  if (process.env.GITHUB_ACTIONS === "true") {
+    const outcomes = [
+      "passed",
+      "failed",
+      "review",
+      "warning",
+      "skipped",
+      "incomplete",
+    ]
+      .map((k) => `${k}=${results.filter((r) => r.outcome === k).length}`)
+      .join("; ");
+    console.log(
+      `::notice title=Official Federation outcomes::recorded=${results.length}; expected=${pin.expectedModules}; ${outcomes}`,
+    );
+  }
   if (!successful(results, pin.expectedModules)) {
     console.error(
       `Official conformance gate did not pass: ${results.filter((r) => r.outcome === "passed").length}/${pin.expectedModules} PASSED; inspect results.json for REVIEW, failures and incomplete modules.`,
