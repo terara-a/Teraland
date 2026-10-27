@@ -6,10 +6,15 @@ on:
     branches: [main]
     paths-ignore: ["**/*.md"]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      source-ref:
+        type: string
+        required: true
 permissions:
   contents: read
 concurrency:
-  group: federation-${{ github.workflow }}-${{ github.ref }}
+  group: federation-${{ github.workflow }}-${{ inputs.source-ref || github.ref }}
   cancel-in-progress: true
 jobs:
   official-federation:
@@ -26,17 +31,21 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Check out the pinned official suite
-        uses: actions/checkout@v6
-        with:
-          repository: openid-certification/conformance-suite
-          ref: f23736032b52739e5262c91263ee102a7bc6ce1a
-          path: .local/conformance-suite
-          persist-credentials: false
+          ref: ${{ inputs.source-ref || github.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
+      - name: Read the pinned suite SHA
+        id: upstream
+        run: node -e 'const fs = require("node:fs"); const pin = JSON.parse(fs.readFileSync("scripts/conformance/upstream.json")); if (!/^[a-f0-9]{40}$/.test(pin.commit)) throw new Error("Invalid upstream SHA"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit=" + pin.commit + "\n");'
+      - name: Check out the pinned official suite
+        uses: actions/checkout@v6
+        with:
+          repository: openid-certification/conformance-suite
+          ref: ${{ steps.upstream.outputs.commit }}
+          path: .local/conformance-suite
+          persist-credentials: false
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

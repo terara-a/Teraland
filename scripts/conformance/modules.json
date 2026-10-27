@@ -1,0 +1,22 @@
+[
+  "openid-federation-automatic-client-registration-invalid-client-id-in-query-parameters",
+  "openid-federation-automatic-client-registration-invalid-client-id-in-request-object",
+  "openid-federation-automatic-client-registration-invalid-duplicate-request-object-jti",
+  "openid-federation-automatic-client-registration-invalid-missing-request-object-aud",
+  "openid-federation-automatic-client-registration-invalid-missing-request-object-exp",
+  "openid-federation-automatic-client-registration-invalid-missing-request-object-iss",
+  "openid-federation-automatic-client-registration-invalid-missing-request-object-jti",
+  "openid-federation-automatic-client-registration-invalid-request-object-aud",
+  "openid-federation-automatic-client-registration-invalid-request-object-exp",
+  "openid-federation-automatic-client-registration-invalid-request-object-iss",
+  "openid-federation-automatic-client-registration-invalid-request-object-sub",
+  "openid-federation-automatic-client-registration-invalid-signature-on-request-object",
+  "openid-federation-automatic-client-registration-invalid-signature-with-other-keys-on-request-object",
+  "openid-federation-automatic-client-registration-with-jar-and-encrypted-request-object",
+  "openid-federation-automatic-client-registration-with-jar-and-get",
+  "openid-federation-automatic-client-registration-with-jar-and-get-and-trust-chain",
+  "openid-federation-automatic-client-registration-with-jar-and-post",
+  "openid-federation-automatic-client-registration-with-jar-and-post-and-trust-chain",
+  "openid-federation-automatic-client-registration-with-par",
+  "openid-federation-automatic-client-registration-with-par-and-trust-chain"
+]
