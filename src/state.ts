@@ -1,3 +1,4 @@
+import { ReplayError } from "./errors";
 import { DurableObject } from "cloudflare:workers";
 import { now, obj, requireThat, type Entry } from "./types";
 // Only the Worker can reach this binding. Every read/consume is transactional;
@@ -78,13 +79,11 @@ export class Store {
   async remember(kind: string, client: string, jti: string, exp: number) {
     requireThat(jti && jti.length <= 256, "missing jti");
     const { hash } = await import("./crypto");
-    requireThat(
-      await this.call(
-        "once",
-        "replay:" + (await hash(JSON.stringify([kind, client, jti]))),
-        { exp },
-      ),
-      "replayed jti",
+    const remembered = await this.call(
+      "once",
+      "replay:" + (await hash(JSON.stringify([kind, client, jti]))),
+      { exp },
     );
+    if (!remembered) throw new ReplayError("replayed jti");
   }
 }

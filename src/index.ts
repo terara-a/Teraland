@@ -1,4 +1,9 @@
 import { limitedText } from "./http";
+import {
+  RequestObjectError,
+  requestErrors,
+  type RequestErrorReason,
+} from "./errors";
 import { base64url } from "jose";
 import { Federation, identifier } from "./federation";
 import {
@@ -40,6 +45,26 @@ const escape = (s: string) =>
         c
       ]!,
   );
+function authorizationFailure(reason: RequestErrorReason = "invalid_request") {
+  // An invalid request never establishes a safe callback destination. Render
+  // locally, with no cookies/forms/links and no reflection of request values.
+  const code =
+    reason === "invalid_request_uri"
+      ? reason
+      : reason === "invalid_request"
+        ? reason
+        : "invalid_request_object";
+  const html = `<!doctype html><html lang="en"><meta charset="utf-8"><title>Teraland — Invalid authorization request</title><h1>Authorization request rejected</h1><p>Error: <code>${code}</code></p><p id="authorization-error" data-error="${code}" data-reason="${reason}">${requestErrors[reason]}</p></html>`;
+  return new Response(html, {
+    status: 400,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy":
+        "default-src 'none'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
+}
 function configuration(env: Env): Config {
   identifier(env.ISSUER, env.DEV_MODE === "true");
   const signing = obj(JSON.parse(env.SIGNING_JWK)),
@@ -245,7 +270,7 @@ class Provider {
           });
     }
     if (path === "/authorize" && ["GET", "POST"].includes(r.method))
-      return this.authorize(r);
+      return this.authorize(r).catch(() => authorizationFailure());
     if (path === "/par" && r.method === "POST") return this.par(r);
     if (path === "/login" && r.method === "POST") return this.login(r);
     if (path === "/token" && r.method === "POST") return this.token(r);
@@ -282,21 +307,21 @@ class Provider {
     const f = await form(r);
     let a: AuthRequest;
     if (f.has("request_uri")) {
-      if (f.has("request")) return fail("invalid_request");
+      if (f.has("request")) return authorizationFailure("invalid_request");
       const id = f.get("client_id") ?? "";
       const saved = await this.store.call<AuthRequest | null>(
         "get",
         "par:" + (await hash(f.get("request_uri")!)),
       );
       if (!saved || saved.claims.client_id !== id)
-        return fail("invalid_request_uri");
+        return authorizationFailure("invalid_request_uri");
       const consumed = await this.store.call<AuthRequest | null>(
         "take",
         "par:" + (await hash(f.get("request_uri")!)),
         undefined,
         { exp: saved.exp },
       );
-      if (!consumed) return fail("invalid_request_uri");
+      if (!consumed) return authorizationFailure("invalid_request_uri");
       a = consumed;
     } else {
       try {
@@ -304,12 +329,16 @@ class Provider {
           f.get("request") ?? "",
           f.get("client_id") ?? "",
         );
-      } catch {
-        return fail("invalid_request_object");
+      } catch (error) {
+        return authorizationFailure(
+          error instanceof RequestObjectError
+            ? error.reason
+            : "invalid_request",
+        );
       }
       for (const k of ["scope", "response_type"])
         if (f.has(k) && f.get(k) !== a.claims[k])
-          return fail("invalid_request");
+          return authorizationFailure("invalid_request");
     }
     if (strings(str(a.claims, "prompt").split(/\s+/)).includes("none"))
       return callback(this.c, a, { error: "login_required" });

@@ -600,3 +600,123 @@ test("PAR can identify a private_key_jwt client from sub without an outer client
   });
   assert.equal((await request("/par", forged)).status, 401);
 });
+
+test("official negative scenarios render specific safe errors for GET and POST", async (t) => {
+  const scenarios = [
+    [
+      "invalid client_id in request object",
+      "invalid_iss",
+      (c) => (c.client_id = rp + "/INVALID"),
+      { client_id: rp + "/INVALID" },
+    ],
+    [
+      "invalid client_id in query",
+      "invalid_client_id",
+      () => {},
+      { client_id: "https://attacker.example" },
+    ],
+    ["invalid signature", "invalid_signature", () => {}, {}, "tamper"],
+    ["signature with other keys", "invalid_signature", () => {}, {}, "other"],
+    ["expired exp", "invalid_exp", (c) => (c.exp = now() - 1)],
+    ["invalid iss", "invalid_iss", (c) => (c.iss = "https://attacker.example")],
+    ["invalid aud", "invalid_aud", (c) => (c.aud = "https://attacker.example")],
+    ["forbidden sub", "forbidden_sub", (c) => (c.sub = rp)],
+    ["missing jti", "invalid_jti", (c) => delete c.jti],
+    ["missing exp", "invalid_exp", (c) => delete c.exp],
+    ["missing iss", "invalid_iss", (c) => delete c.iss],
+    ["missing aud", "invalid_aud", (c) => delete c.aud],
+    ["reused jti", "replayed_jti", () => {}, {}, "replay"],
+  ];
+  for (const method of ["GET", "POST"]) {
+    for (const [name, reason, mutate, outer = {}, mode] of scenarios) {
+      await t.test(method + " " + name, async () => {
+        const c = claims();
+        const secret = '<script>alert("private-request-value")</script>';
+        c.state = secret;
+        mutate(c);
+        let raw = await signed(
+          mode === "other" ? entityKey : rpKey,
+          c,
+          mode === "other" || mode === "tamper" ? undefined : "JWT",
+          "RS256",
+          mode === "other" || mode === "tamper" ? { typ: undefined } : {},
+        );
+        if (mode === "tamper") {
+          const parts = raw.split(".");
+          parts[2] = (parts[2][0] === "A" ? "B" : "A") + parts[2].slice(1);
+          raw = parts.join(".");
+        }
+        if (mode === "replay") await loginPage(raw, method);
+        const params = { client_id: rp, request: raw, ...outer };
+        const response =
+          method === "GET"
+            ? await request("/authorize?" + new URLSearchParams(params))
+            : await request("/authorize", params);
+        const body = await response.text();
+        assert.equal(response.status, 400);
+        assert.match(response.headers.get("content-type"), /^text\/html/);
+        assert.match(body, new RegExp(`data-reason="${reason}"`));
+        assert.match(body, /data-error="invalid_request_object"/);
+        assert.match(body, /<code>invalid_request_object<\/code>/);
+        assert.equal(response.headers.has("location"), false);
+        assert.equal(response.headers.has("set-cookie"), false);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+        assert.match(
+          response.headers.get("content-security-policy"),
+          /form-action 'none'/,
+        );
+        assert.doesNotMatch(
+          body,
+          /<form|<input|<script|private-request-value|access_token|id_token|name="request_id"/,
+        );
+        assert.equal(body.includes(raw), false);
+        assert.equal(body.includes(rp), false);
+        // The API endpoint retains its machine-readable error contract.
+        const par = await request("/par", {
+          client_id: params.client_id,
+          request: raw,
+        });
+        assert.equal(par.status, 400);
+        assert.deepEqual(await par.json(), { error: "invalid_request_object" });
+      });
+    }
+  }
+});
+
+test("malformed authorization requests show safe local errors", async () => {
+  for (const [params, reason] of [
+    [{ client_id: rp, request: "not-a-jwt" }, "malformed_request"],
+    [
+      { client_id: rp, request_uri: "https://attacker.example/request" },
+      "invalid_request_uri",
+    ],
+  ]) {
+    const response = await request("/authorize?" + new URLSearchParams(params));
+    assert.equal(response.status, 400);
+    assert.match(await response.text(), new RegExp(`data-reason="${reason}"`));
+    assert.equal(response.headers.has("location"), false);
+    assert.equal(response.headers.has("set-cookie"), false);
+  }
+  const duplicate = await request("/authorize?client_id=a&client_id=b");
+  assert.equal(duplicate.status, 400);
+  assert.match(await duplicate.text(), /data-reason="invalid_request"/);
+});
+
+test("request object typ is optional; explicit unrelated types remain rejected", async () => {
+  const withoutTyp = await signed(rpKey, claims(), "JWT", "RS256", {
+    typ: undefined,
+  });
+  await loginPage(withoutTyp);
+  for (const typ of ["JWT", "oauth-authz-req+jwt"])
+    await loginPage(await signed(rpKey, claims(), typ));
+  const wrongType = await request(
+    "/authorize?" +
+      new URLSearchParams({
+        client_id: rp,
+        request: await signed(rpKey, claims(), "entity-statement+jwt"),
+      }),
+  );
+  assert.equal(wrongType.status, 400);
+  assert.match(await wrongType.text(), /data-reason="invalid_type"/);
+});

@@ -76,7 +76,7 @@ Workers の Fetch API では DNS の解決先 IP を直接検査してソケッ�
 
 公開デプロイ、Cloudflare アカウント、GitHub Secrets の追加は不要です。
 固定コミットの公式 OpenID Foundation スイートを Java 21 でビルドし、MongoDB と
-Miniflare/workerd の Worker を CI 内で起動します。公式プランの全20モジュールを
+Miniflare/workerd の Worker を CI 内で起動します。RP 署名鍵の RS256 / PS256 / ES256 ごとに公式プランの全20モジュール（計60通り）を
 API から順番に実行し、公式の HtmlUnit ブラウザー操作でログインやエラーページを
 処理します。Chromium の独立したブラウザーテストではありません。
 
@@ -92,7 +92,9 @@ Worker の署名検証・信頼アンカー検証・ホスト許可リストは�
 # Node.js 24 / 完全な JDK 21（JRE だけでは不可）/ Maven 3.9+ /
 # Docker / OpenSSL / Git が必要です。Java の keytool も使います。
 npm ci
-npm run test:conformance
+npm run test:conformance # 既定は RS256
+CONFORMANCE_RP_SIGNING_ALG=PS256 npm run test:conformance
+CONFORMANCE_RP_SIGNING_ALG=ES256 npm run test:conformance
 ```
 
 Linux で非特権プロセスが443番へ bind できない場合は、CI と同じ一時環境で
@@ -106,15 +108,23 @@ loopback ポートを使います。既存のサービスと競合しない環�
 `scripts/conformance/upstream.json`、CI の checkout SHA は workflow にも記載しています。
 更新するときは両方を揃え、実際のプラン構成を再確認してください。
 
+ローカル実行は1方式ずつで、次の実行が前の成果物を置き換えます。CI は3方式を独立した
+matrix ジョブで実行し、artifact 名の末尾にも方式を付けます。OP の署名鍵と Federation の
+Entity Configuration／trust anchor の鍵は RS256 のままで、RP の Request Object と
+private_key_jwt の署名鍵を切り替えます。
+
 結果は `artifacts/conformance/` に保存し、CI の artifact と Job Summary に残します。
 `results.json` はモジュールごとの公式 status/result と集計、`junit.xml` は厳格な適合性
 判定の診断用、`summary.md` は人が読む概要です。生成された秘密鍵・認証情報を含み得る
 生のスイート設定、ログ、ZIP エクスポートは artifact に含めません。実行用の秘密鍵・
 CA・ローカル状態・私用ログと、このスクリプトが起動した MongoDB は終了時に削除します。
 
-**全20件が FINISHED で、公式判定が PASSED または REVIEW なら CI を成功にします。**
+**全20件が FINISHED で公式判定が PASSED または REVIEW、かつ異常系13件の応答検証が成功した場合に CI を成功にします。**
 ゼロ件、重複、件数不足、未完了、FAILED、WARNING、SKIPPED は引き続き失敗です。
 公式判定自体は変更せず、画面確認が必要な REVIEW を PASSED に上書きしません。
+異常系では拒否理由・HTTP 400・HTML・リダイレクト／Cookie／フォーム／認可情報の不在・
+キャッシュ抑止とページ保護ヘッダーを追加で検証します。jti 再利用では初回の受付も確認します。
+検証の詳細は [異常系の検証](conformance-negative.md) を参照してください。
 
 `results.json` の `ciSuccess` は CI 実行ゲート、`success` は全件 PASSED が必要な厳格な
 適合性判定です。CI が緑でも `success: false` と REVIEW が残る場合があります。
