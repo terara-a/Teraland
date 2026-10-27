@@ -76,7 +76,7 @@ Workers の Fetch API では DNS の解決先 IP を直接検査してソケッ�
 
 公開デプロイ、Cloudflare アカウント、GitHub Secrets の追加は不要です。
 固定コミットの公式 OpenID Foundation スイートを Java 21 でビルドし、MongoDB と
-Miniflare/workerd の Worker を CI 内で起動します。公式プランの全20モジュールを
+Miniflare/workerd の Worker を CI 内で起動します。RP 署名鍵の RS256 / PS256 / ES256 ごとに公式プランの全20モジュール（計60通り）を
 API から順番に実行し、公式の HtmlUnit ブラウザー操作でログインやエラーページを
 処理します。Chromium の独立したブラウザーテストではありません。
 
@@ -92,7 +92,9 @@ Worker の署名検証・信頼アンカー検証・ホスト許可リストは�
 # Node.js 24 / 完全な JDK 21（JRE だけでは不可）/ Maven 3.9+ /
 # Docker / OpenSSL / Git が必要です。Java の keytool も使います。
 npm ci
-npm run test:conformance
+npm run test:conformance # 既定は RS256
+CONFORMANCE_RP_SIGNING_ALG=PS256 npm run test:conformance
+CONFORMANCE_RP_SIGNING_ALG=ES256 npm run test:conformance
 ```
 
 Linux で非特権プロセスが443番へ bind できない場合は、CI と同じ一時環境で
@@ -105,6 +107,11 @@ loopback ポートを使います。既存のサービスと競合しない環�
 一致し、追跡ファイルに変更がない必要があります。固定 SHA とモジュール数は
 `scripts/conformance/upstream.json`、CI の checkout SHA は workflow にも記載しています。
 更新するときは両方を揃え、実際のプラン構成を再確認してください。
+
+ローカル実行は1方式ずつで、次の実行が前の成果物を置き換えます。CI は3方式を独立した
+matrix ジョブで実行し、artifact 名の末尾にも方式を付けます。OP の署名鍵と Federation の
+Entity Configuration／trust anchor の鍵は RS256 のままで、RP の Request Object と
+private_key_jwt の署名鍵を切り替えます。
 
 結果は `artifacts/conformance/` に保存し、CI の artifact と Job Summary に残します。
 `results.json` はモジュールごとの公式 status/result と集計、`junit.xml` は厳格な適合性

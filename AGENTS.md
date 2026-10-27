@@ -41,7 +41,8 @@ of routine reversible steps.
 - `.github/workflows/conformance.yml` and `scripts/conformance/`: a separate,
   self-contained official Federation OP suite run. See `docs/setup.md` for JDK/Maven/Docker
   prerequisites and local HTTPS/CA handling. `npm run test:conformance` executes all
-  20 pinned upstream modules; it is not part of the ordinary `npm test` command.
+  20 pinned upstream modules per RP signing algorithm (RS256 default; CI also runs
+  PS256 and ES256, for 60 combinations); it is not part of the ordinary `npm test` command.
   The CI execution gate accepts complete PASSED or REVIEW results only when all
   13 negative response checks also succeed (see `docs/conformance-negative.md`). Strict
   conformance success still requires all PASSED. Preserve REVIEW/WARNING/
