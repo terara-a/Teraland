@@ -162,6 +162,7 @@ async function loginPage(raw, method = "GET") {
   const id = /name="request_id" value="([^"]+)"/.exec(html)?.[1];
   assert.ok(id);
   assert.ok(r.headers.get("content-security-policy").includes(rp));
+  assert.equal(r.headers.get("referrer-policy"), "same-origin");
   return { id, cookie: r.headers.get("set-cookie").split(";")[0] };
 }
 async function login(page, password = "local-test-password") {
@@ -469,6 +470,16 @@ test("parallel logins, CSRF, origin and credentials", async () => {
     ).status,
     403,
   );
+  const opaque = await request(
+    "/login",
+    {
+      request_id: p.id,
+      username: "alice",
+      password: "local-test-password",
+    },
+    { cookie: p.cookie, origin: "null" },
+  );
+  assert.equal(opaque.status, 403);
   assert.equal((await login(p, "wrong")).status, 401);
 });
 test("Durable Objects preserve pending grants and replay protection across runtime restart", async () => {
