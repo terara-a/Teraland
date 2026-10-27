@@ -10,19 +10,47 @@ import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { reviewedPlan } from "./update.mjs";
 import { privateJWK } from "../setup-local.mjs";
-import { classify, successful, ciSuccessful, junit } from "./results.mjs";
+import {
+  classify,
+  successful,
+  ciSuccessful,
+  basicSuccessful,
+  junit,
+} from "./results.mjs";
 import {
   observeAuthorization,
   checkNegative,
   negativesSuccessful,
 } from "./negative-checks.mjs";
 const [suiteDir, runDir, mongoPort] = process.argv.slice(2);
-const reviewedModules = JSON.parse(
+const basic = process.env.CONFORMANCE_PROFILE === "basic";
+if (
+  process.env.CONFORMANCE_PROFILE &&
+  !["basic", "federation"].includes(process.env.CONFORMANCE_PROFILE)
+)
+  throw new Error("Invalid conformance profile");
+const basicProfile = JSON.parse(
+  await readFile("scripts/conformance/basic.json", "utf8"),
+);
+const outputDir = basic
+  ? "artifacts/conformance-basic"
+  : "artifacts/conformance";
+let reviewedModules = JSON.parse(
   await readFile("scripts/conformance/modules.json", "utf8"),
 );
 const pin = JSON.parse(
   await readFile("scripts/conformance/upstream.json", "utf8"),
 );
+if (basic) {
+  pin.plan = basicProfile.plan;
+  pin.expectedModules = basicProfile.modules.length;
+  reviewedModules = basicProfile.modules;
+}
+const executionSuccessful = () =>
+  basic
+    ? basicSuccessful(results, basicProfile)
+    : ciSuccessful(results, pin.expectedModules) &&
+      negativesSuccessful(results);
 const issuer = "https://op.teraland.test",
   suite = "https://suite.teraland.test",
   alias = "teraland-ci";
@@ -126,26 +154,27 @@ async function writeResults() {
     plan: pin.plan,
     results,
     success: successful(results, pin.expectedModules),
-    ciSuccess:
-      ciSuccessful(results, pin.expectedModules) &&
-      negativesSuccessful(results),
-    negativeChecksSuccess: negativesSuccessful(results),
+    ciSuccess: executionSuccessful(),
+    ...(basic ? {} : { negativeChecksSuccess: negativesSuccessful(results) }),
   };
   await writeFile(
-    "artifacts/conformance/results.json",
+    outputDir + "/results.json",
     JSON.stringify(report, null, 2) + "\n",
   );
-  await writeFile("artifacts/conformance/junit.xml", junit(results));
+  await writeFile(outputDir + "/junit.xml", junit(results));
   const counts = {};
   for (const r of results) counts[r.outcome] = (counts[r.outcome] ?? 0) + 1;
-  const summary = `## Official OpenID Federation OP\n\nSuite commit: \`${pin.commit}\`\n\nRP signing algorithm: \`${rpSigningAlg}\`\n\nRecorded module outcomes: ${results.length}/${pin.expectedModules}\n\n${Object.entries(
+  const policyText = basic
+    ? "Basic CI permits only the named optional-capability SKIPPED and manual REVIEW results in basic.json. These outcomes remain SKIPPED and REVIEW, never PASSED. Other warnings, failures and incomplete modules fail CI."
+    : "CI accepts completed PASSED or REVIEW results only when all 13 negative response checks succeed. REVIEW still requires manual confirmation. WARNING, SKIPPED, FAILED and incomplete results fail CI.";
+  const summary = `## Official OpenID ${basic ? "Connect Core Basic" : "Federation OP"}\n\nSuite commit: \`${pin.commit}\`\n\nRP signing algorithm: \`${rpSigningAlg}\`\n\nRecorded module outcomes: ${results.length}/${pin.expectedModules}\n\n${Object.entries(
     counts,
   )
     .map(([k, v]) => `- ${k}: ${v}`)
     .join(
       "\n",
-    )}\n\nCI accepts completed PASSED or REVIEW results. REVIEW still requires manual confirmation; strict conformance success requires every module to pass. WARNING, SKIPPED, FAILED and incomplete results fail CI. This local alpha-plan run is not OIDF certification.\n\nNegative response checks: ${results.filter((r) => r.negativeCheck?.verified).length}/13 verified. These checks do not approve official manual reviews.\n`;
-  await writeFile("artifacts/conformance/summary.md", summary);
+    )}\n\n${policyText}\n\nStrict conformance success requires every module to pass. This local run is not OIDF certification.\n${basic ? "" : `\nNegative response checks: ${results.filter((r) => r.negativeCheck?.verified).length}/13 verified. These checks do not approve official manual reviews.\n`}`;
+  await writeFile(outputDir + "/summary.md", summary);
   if (process.env.GITHUB_STEP_SUMMARY)
     await writeFile(process.env.GITHUB_STEP_SUMMARY, summary, { flag: "a" });
 }
@@ -164,6 +193,8 @@ try {
     ),
   );
   const password = crypto.randomUUID();
+  const clientSecret = crypto.randomUUID();
+  const secondClientSecret = crypto.randomUUID();
   const options = convertV4MiniflareOptions({
     name: "teraland-ci",
     scriptPath: ".build/index.js",
@@ -178,6 +209,43 @@ try {
       TERALAND_PASSWORD: password,
       FEDERATION_HOSTS: JSON.stringify(["suite.teraland.test"]),
       TRUST_ANCHORS: JSON.stringify({ [anchor]: { keys: [publicAnchor] } }),
+      ...(basic
+        ? {
+            STATIC_CLIENTS: JSON.stringify([
+              {
+                client_id: "basic-ci",
+                client_secret: clientSecret,
+                redirect_uris: [suite + "/test/a/" + alias + "/callback"],
+              },
+              {
+                client_id: "basic-ci-two",
+                client_secret: secondClientSecret,
+                redirect_uris: [suite + "/test/a/" + alias + "/callback"],
+              },
+            ]),
+            USER_CLAIMS: JSON.stringify({
+              name: "CI User",
+              family_name: "User",
+              given_name: "CI",
+              middle_name: "Test",
+              nickname: "ci",
+              preferred_username: "ci-user",
+              profile: "https://op.teraland.test/profile",
+              picture: "https://op.teraland.test/picture",
+              website: "https://op.teraland.test",
+              gender: "unspecified",
+              birthdate: "2000-01-01",
+              zoneinfo: "Asia/Tokyo",
+              locale: "ja-JP",
+              updated_at: Math.floor(Date.now() / 1000),
+              email: "ci@example.test",
+              email_verified: true,
+              address: { formatted: "Test address" },
+              phone_number: "+12025550100",
+              phone_number_verified: true,
+            }),
+          }
+        : {}),
     },
     outboundService: async (req) =>
       secureFetch(req.url, {
@@ -284,7 +352,11 @@ try {
   await ready();
   const config = {
     alias,
-    description: "Teraland CI official Federation OP plan " + rpSigningAlg,
+    description:
+      "Teraland CI official " +
+      (basic ? "OIDC Basic" : "Federation OP") +
+      " plan " +
+      rpSigningAlg,
     federation: {
       entity_identifier: issuer,
       rp_authority_hint: anchor,
@@ -292,11 +364,51 @@ try {
       rp_client_jwks: { keys: [rpSigning] },
     },
     federation_trust_anchor: { trust_anchor_jwks: { keys: [trustAnchor] } },
+    ...(basic
+      ? {
+          server: {
+            discoveryUrl: issuer + "/.well-known/openid-configuration",
+          },
+          client_secret_post: {
+            client_id: "basic-ci",
+            client_secret: clientSecret,
+          },
+          client2: {
+            client_id: "basic-ci-two",
+            client_secret: secondClientSecret,
+            jwks: { keys: [rpSigning] },
+          },
+          client: {
+            client_id: "basic-ci",
+            client_secret: clientSecret,
+            jwks: { keys: [rpSigning] },
+          },
+        }
+      : {}),
     options: { browsercontrol_css_enable: false },
     browser: [
       {
         match: issuer + "/authorize*",
         tasks: [
+          ...(basic
+            ? [
+                {
+                  task: "Record login page if manual confirmation is required",
+                  match: issuer + "/authorize*",
+                  optional: true,
+                  commands: [
+                    [
+                      "wait",
+                      "css",
+                      "body",
+                      5,
+                      "Teraland|invalid_request|redirect_uri",
+                      "update-image-placeholder-optional",
+                    ],
+                  ],
+                },
+              ]
+            : []),
           {
             task: "Login if a login form is shown",
             match: issuer + "/authorize*",
@@ -323,7 +435,7 @@ try {
                 "css",
                 "body",
                 5,
-                "invalid_request|invalid_client",
+                "invalid_request|invalid_client|redirect_uri",
                 "update-image-placeholder-optional",
               ],
             ],
@@ -336,7 +448,7 @@ try {
     planName: pin.plan,
     variant: JSON.stringify({
       server_metadata: "discovery",
-      client_registration: "automatic",
+      client_registration: basic ? "static_client" : "automatic",
     }),
   });
   const plan = await api("/api/plan?" + query, config);
@@ -399,16 +511,14 @@ try {
       .map((k) => `${k}=${results.filter((r) => r.outcome === k).length}`)
       .join("; ");
     console.log(
-      `::notice title=Official Federation outcomes::rp_signing_alg=${rpSigningAlg}; recorded=${results.length}; expected=${pin.expectedModules}; ${outcomes}`,
+      `::notice title=Official ${basic ? "OIDC Basic" : "Federation"} outcomes::rp_signing_alg=${rpSigningAlg}; recorded=${results.length}; expected=${pin.expectedModules}; ${outcomes}`,
     );
-    console.log(
-      `::notice title=Federation negative response checks::rp_signing_alg=${rpSigningAlg}; verified=${results.filter((r) => r.negativeCheck?.verified).length}; expected=13; success=${negativesSuccessful(results)}`,
-    );
+    if (!basic)
+      console.log(
+        `::notice title=Federation negative response checks::rp_signing_alg=${rpSigningAlg}; verified=${results.filter((r) => r.negativeCheck?.verified).length}; expected=13; success=${negativesSuccessful(results)}`,
+      );
   }
-  if (
-    !ciSuccessful(results, pin.expectedModules) ||
-    !negativesSuccessful(results)
-  ) {
+  if (!executionSuccessful()) {
     console.error(
       `Official suite CI execution gate did not pass: ${results.filter((r) => r.outcome === "passed").length}/${pin.expectedModules} PASSED; inspect results.json for REVIEW, failures, incomplete modules and negative response checks.`,
     );
@@ -417,7 +527,7 @@ try {
 } catch (error) {
   console.error("Official conformance run failed:", error.message);
   process.exitCode = 1;
-  await mkdir("artifacts/conformance", { recursive: true });
+  await mkdir(outputDir, { recursive: true });
   await writeResults();
 } finally {
   agent.destroy();

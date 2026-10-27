@@ -13,6 +13,8 @@ export interface Env {
   TRUST_ANCHORS: string;
   STATE: DurableObjectNamespace;
   DEV_MODE?: string;
+  STATIC_CLIENTS?: string;
+  USER_CLAIMS?: string;
 }
 export interface Config {
   issuer: string;
@@ -22,6 +24,8 @@ export interface Config {
   password: string;
   hosts: string[];
   anchors: Record<string, JWKS>;
+  clients: Record<string, ObjectMap>;
+  userClaims: ObjectMap;
 }
 export interface AuthRequest {
   claims: ObjectMap;
@@ -38,6 +42,8 @@ export interface Grant {
   subject: string;
   authTime: number;
   exp: number;
+  userinfo?: ObjectMap;
+  idClaims?: ObjectMap;
 }
 export interface Entry {
   exp: number;

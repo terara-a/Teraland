@@ -1,4 +1,4 @@
-name: Official Federation conformance
+name: Official OpenID conformance
 on:
   pull_request:
     paths-ignore: ["**/*.md"]
@@ -18,12 +18,21 @@ concurrency:
   cancel-in-progress: true
 jobs:
   official-federation:
-    name: official-federation (${{ matrix.rp-signing-alg }})
+    name: ${{ matrix.profile == 'basic' && 'official-oidc-basic' || format('official-federation ({0})', matrix.rp-signing-alg) }}
     strategy:
       fail-fast: false
       matrix:
-        rp-signing-alg: [RS256, PS256, ES256]
+        include:
+          - profile: federation
+            rp-signing-alg: RS256
+          - profile: federation
+            rp-signing-alg: PS256
+          - profile: federation
+            rp-signing-alg: ES256
+          - profile: basic
+            rp-signing-alg: RS256
     env:
+      CONFORMANCE_PROFILE: ${{ matrix.profile }}
       CONFORMANCE_RP_SIGNING_ALG: ${{ matrix.rp-signing-alg }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -55,16 +64,16 @@ jobs:
       - run: npm ci
       - name: Permit the unprivileged local HTTPS listener
         run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
-      - name: Run all official Federation OP modules against the local Worker
+      - name: Run the official plan against the local Worker
         run: npm run test:conformance
       - name: Preserve result metadata (never private suite logs or keys)
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: official-federation-results-${{ matrix.rp-signing-alg }}
+          name: official-${{ matrix.profile }}-results-${{ matrix.rp-signing-alg }}
           path: |
-            artifacts/conformance/results.json
-            artifacts/conformance/junit.xml
-            artifacts/conformance/summary.md
+            artifacts/conformance*/results.json
+            artifacts/conformance*/junit.xml
+            artifacts/conformance*/summary.md
           if-no-files-found: warn
           retention-days: 7

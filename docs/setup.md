@@ -70,7 +70,9 @@ Workers の Fetch API では DNS の解決先 IP を直接検査してソケッ�
 
 ## 公式適合性テストの実行
 
-通常の `TypeScript Workers` ジョブとは別に、`Official Federation conformance`
+[OIDC Core Basic の設定・テスト手順](oidc-basic.md)も参照してください。
+
+通常の `TypeScript Workers` ジョブとは別に、`Official OpenID conformance`
 ワークフローを実行します。PR と main への push（文書だけの変更を除く）で
 実行し、Actions の **Run workflow** からも手動実行できます。
 
@@ -140,6 +142,6 @@ Provider が不正リクエストをエラーページで拒否する異常系�
 
 案内: <https://openid.net/certification/federation_testing/>
 
-最初の対象プランは `openid-federation-entity-joined-to-test-federation-op-test-plan` です。使用する公式テストコードは [コミット f237360](https://github.com/openid-certification/conformance-suite/tree/f23736032b52739e5262c91263ee102a7bc6ce1a)。その版は alpha / certifiable=false です。
+Federation の対象プランは `openid-federation-entity-joined-to-test-federation-op-test-plan` です。使用する公式テストコードの固定SHAは `scripts/conformance/upstream.json` を参照してください。このFederationプランは alpha / certifiable=false です。
 
 公開 HTTPS issuer を用意し、スイート側の `federation.entity_identifier` に設定します。スイートが公開する trust anchor の identifier と公開鍵を `TRUST_ANCHORS` に、その関連ホストを `FEDERATION_HOSTS` に設定します。RP 自体の issuer、JWKS、anchor の各 endpoint が双方から到達可能である必要があります。スイートのブラウザー操作では `username` / `password` のフォームを使います。

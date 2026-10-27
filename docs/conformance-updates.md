@@ -20,7 +20,7 @@ GitHub Actions のスケジュール実行には遅延があり、時刻は厳�
 
 追加のSecretは使いません。`GITHUB_TOKEN` が作ったPRでは通常のPRワークフローが起動しないため、
 日次ワークフローから通常テストと再利用可能な公式CIを明示的に呼び出します。
-公式CIはRS256・PS256・ES256の3方式を実行します。
+公式CIはFederationのRS256・PS256・ES256の3方式と、OIDC Core Basicの事前登録クライアント構成を実行します。
 実際に検証した候補コミットのSHAに **Scheduled conformance validation** チェックを登録し、
 両方の検証が成功した場合だけ成功とします。スキップ・中断・失敗を成功にはしません。
 詳細はチェックから日次ワークフローへ移動して確認できます。
@@ -46,6 +46,7 @@ Allow GitHub Actions to create and approve pull requests** を有効にする必
 
 追加・削除されたテストや新しい異常系の要求を確認し、必要なProvider実装と回帰テスト、
 確認済みリスト、拒否応答の期待値を更新してから再検証してください。
+Basicの確認済み構成は `scripts/conformance/basic.json` で固定し、追加・削除も実行時に検出します。
 公式の REVIEW は引き続き人手確認待ちです。CI成功を全件PASSEDや認証取得とは扱いません。
 
 上流のJavaアノテーションが動的な指定などに変わって解析できない場合は、安全側に失敗し、

@@ -96,7 +96,7 @@ export async function update(suiteDir) {
     `Official plan: ${pin.plan}\nModules: ${pin.expectedModules} → ${modules.length}\n\n` +
     `Added modules:\n${changes.added.map((n) => "- " + n).join("\n") || "- None"}\n\n` +
     `Removed modules:\n${changes.removed.map((n) => "- " + n).join("\n") || "- None"}\n\n` +
-    `RS256, PS256 and ES256 validation is invoked explicitly by the daily updater, ` +
+    `Federation RS256, PS256 and ES256 plus OIDC Basic validation is invoked explicitly by the daily updater, ` +
     `because GITHUB_TOKEN-created PRs do not trigger normal PR workflows. ` +
     `The Scheduled conformance validation check on this PR's head reports the result.\n\n` +
     `The reviewed module manifest and negative response expectations are intentionally not auto-approved. ` +

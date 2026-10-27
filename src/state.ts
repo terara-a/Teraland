@@ -26,6 +26,35 @@ export class ProviderState extends DurableObject {
           await tx.put(key, value);
           return true;
         }
+        case "reuse":
+        case "redeem": {
+          const usedKey = "used:" + key;
+          const used = await tx.get<Entry>(usedKey);
+          const match = obj(m.match);
+          if (used && used.exp > now() && used.client === match.client) {
+            await tx.delete(String(used.tokenKey));
+            return false;
+          }
+          if (m.op === "reuse" || !live || live.client !== match.client)
+            return false;
+          const value = obj(m.value),
+            token = obj(value.token);
+          requireThat(
+            typeof value.tokenKey === "string" &&
+              value.tokenKey.startsWith("token:") &&
+              typeof token.exp === "number" &&
+              token.exp > now(),
+            "Invalid token state",
+          );
+          await tx.delete(key);
+          await tx.put(value.tokenKey, token);
+          await tx.put(usedKey, {
+            client: live.client,
+            tokenKey: value.tokenKey,
+            exp: token.exp,
+          });
+          return true;
+        }
         case "get":
           return live ?? null;
         case "take": {

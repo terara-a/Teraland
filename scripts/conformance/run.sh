@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-mkdir -p artifacts/conformance
+teraland_output=artifacts/conformance
+if [ "${CONFORMANCE_PROFILE:-federation}" = basic ]; then teraland_output=artifacts/conformance-basic; fi
+mkdir -p "$teraland_output"
 # Do not leave reports from an older successful run after a startup/build failure.
-rm -f artifacts/conformance/results.json artifacts/conformance/junit.xml artifacts/conformance/summary.md
+rm -f "$teraland_output/results.json" "$teraland_output/junit.xml" "$teraland_output/summary.md"
 # No production deployment, external account or persistent credentials are used.
 teraland_suite="${CONFORMANCE_SUITE_DIR:-$PWD/.local/conformance-suite}"
 teraland_pin=$(node -p "JSON.parse(require('fs').readFileSync('scripts/conformance/upstream.json')).commit")
