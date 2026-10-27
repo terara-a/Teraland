@@ -351,6 +351,9 @@ class Provider {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Set-Cookie": cookie(this.c, id, a.csrf),
+        // no-referrer makes Chromium send Origin: null on a form POST.
+        // Retain same-origin checks without leaking the request URL to the RP.
+        "Referrer-Policy": "same-origin",
         "Content-Security-Policy": policy.replace(
           "form-action 'self'",
           `form-action 'self' ${origin}`,
@@ -482,7 +485,8 @@ export default {
     headers.set("Cache-Control", "no-store");
     headers.set("Pragma", "no-cache");
     headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("Referrer-Policy", "no-referrer");
+    if (!headers.has("Referrer-Policy"))
+      headers.set("Referrer-Policy", "no-referrer");
     if (!headers.has("Content-Security-Policy"))
       headers.set("Content-Security-Policy", policy);
     return new Response(response.body, { status: response.status, headers });
