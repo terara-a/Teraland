@@ -49,6 +49,14 @@ of routine reversible steps.
   SKIPPED/FAILED/incomplete distinctions; never rewrite manual review as a pass.
   Artifacts contain result metadata only, not raw suite logs/configs/private keys.
 
+- `.github/workflows/update-conformance.yml`: daily upstream update proposals at
+  06:05 JST (21:05 UTC), never auto-merged. See `docs/conformance-updates.md`.
+  Keep the SHA only in `scripts/conformance/upstream.json`. The reviewed module
+  manifest (`modules.json`) and negative expectations require explicit review;
+  do not auto-approve new test identities by only changing a count.
+  GITHUB_TOKEN-created PRs need explicit reusable CI invocation and a check on
+  their proposed head SHA. Never give suite execution jobs write permissions.
+
 ## Development and verification
 
 Use the existing checkout. Cloud tasks are isolated already; do not create a Git

@@ -5,9 +5,10 @@ import {
   Agent,
 } from "node:https";
 import { request as httpRequest } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import { reviewedPlan } from "./update.mjs";
 import { privateJWK } from "../setup-local.mjs";
 import { classify, successful, ciSuccessful, junit } from "./results.mjs";
 import {
@@ -16,6 +17,9 @@ import {
   negativesSuccessful,
 } from "./negative-checks.mjs";
 const [suiteDir, runDir, mongoPort] = process.argv.slice(2);
+const reviewedModules = JSON.parse(
+  await readFile("scripts/conformance/modules.json", "utf8"),
+);
 const pin = JSON.parse(
   await readFile("scripts/conformance/upstream.json", "utf8"),
 );
@@ -114,7 +118,9 @@ async function ready() {
 async function writeResults() {
   const report = {
     startedAt,
-    sourceCommit: process.env.GITHUB_SHA ?? null,
+    sourceCommit: execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim(),
     rpSigningAlg,
     suite: pin,
     plan: pin.plan,
@@ -336,10 +342,15 @@ try {
   const plan = await api("/api/plan?" + query, config);
   if (
     !Array.isArray(plan.modules) ||
-    plan.modules.length !== pin.expectedModules ||
-    new Set(plan.modules.map((m) => m.testModule)).size !== pin.expectedModules
+    !reviewedPlan(
+      plan.modules.map((m) => m.testModule),
+      reviewedModules,
+      pin.expectedModules,
+    )
   )
-    throw new Error("unexpected or empty official module list");
+    throw new Error(
+      "Official module list differs from the reviewed manifest; review upstream changes",
+    );
   for (const module of plan.modules) {
     const name = module.testModule;
     authorizationResponses = [];

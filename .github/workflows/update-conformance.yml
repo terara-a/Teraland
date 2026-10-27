@@ -1,0 +1,139 @@
+name: Update official conformance suite
+on:
+  schedule:
+    # 06:05 JST. Avoid the start-of-hour load on upstream services.
+    - cron: "5 21 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: update-official-conformance
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: write
+    outputs:
+      changed: ${{ steps.discover.outputs.changed }}
+      head-sha: ${{ steps.proposal.outputs.head-sha }}
+      check-id: ${{ steps.proposal.outputs.check-id }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_BRANCH: ${{ github.event.repository.default_branch }}
+      UPDATE_BRANCH: automation/conformance-suite
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Check the upstream default branch once
+        uses: actions/checkout@v6
+        with:
+          repository: openid-certification/conformance-suite
+          path: .local/conformance-update-suite
+          persist-credentials: false
+      - name: Discover the upstream plan and prepare a candidate pin
+        id: discover
+        run: node scripts/conformance/update.mjs .local/conformance-update-suite
+      - name: Create or update the proposal without force-pushing
+        if: steps.discover.outputs.changed == 'true'
+        id: proposal
+        run: |
+          set -euo pipefail
+          cp scripts/conformance/upstream.json "$RUNNER_TEMP/conformance-upstream.json"
+          git restore scripts/conformance/upstream.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          remote=$(git ls-remote --heads origin "$UPDATE_BRANCH")
+          if [ -n "$remote" ]; then
+            git fetch origin "$UPDATE_BRANCH"
+            git switch --create "$UPDATE_BRANCH" FETCH_HEAD
+            git merge --no-edit "origin/$BASE_BRANCH"
+          else
+            git switch --create "$UPDATE_BRANCH"
+          fi
+          cp "$RUNNER_TEMP/conformance-upstream.json" scripts/conformance/upstream.json
+          git add scripts/conformance/upstream.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update the pinned official conformance suite'
+          fi
+          git push origin "HEAD:refs/heads/$UPDATE_BRANCH"
+          head_sha=$(git rev-parse HEAD)
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$UPDATE_BRANCH" --base "$BASE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            pr=$(gh api --method POST "repos/$GITHUB_REPOSITORY/pulls" \
+              -f title='Update official Federation conformance suite' \
+              -f head="$UPDATE_BRANCH" -f base="$BASE_BRANCH" \
+              -F body=@.local/conformance-update-pr.md --jq .number)
+          else
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$pr" \
+              -F body=@.local/conformance-update-pr.md >/dev/null
+          fi
+          check_id=$(gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" \
+            -f name='Scheduled conformance validation' -f head_sha="$head_sha" \
+            -f status=in_progress \
+            -f details_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .id)
+          echo "head-sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "check-id=$check_id" >> "$GITHUB_OUTPUT"
+          echo "Update PR: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$pr" >> "$GITHUB_STEP_SUMMARY"
+      - name: No upstream update
+        if: steps.discover.outputs.changed == 'false'
+        run: echo 'The pinned suite is already current; no PR or expensive suite run is needed.' >> "$GITHUB_STEP_SUMMARY"
+  provider-tests:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.head-sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+  official-tests:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/conformance.yml
+    with:
+      source-ref: ${{ needs.prepare.outputs.head-sha }}
+  report:
+    needs: [prepare, provider-tests, official-tests]
+    if: always() && needs.prepare.outputs.check-id != ''
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CHECK_ID: ${{ needs.prepare.outputs.check-id }}
+      PROVIDER_RESULT: ${{ needs.provider-tests.result }}
+      OFFICIAL_RESULT: ${{ needs.official-tests.result }}
+    steps:
+      - name: Publish the explicit validation result on the proposed commit
+        run: |
+          set -euo pipefail
+          conclusion=failure
+          if [ "$PROVIDER_RESULT" = success ] && [ "$OFFICIAL_RESULT" = success ]; then
+            conclusion=success
+          fi
+          jq -n --arg conclusion "$conclusion" \
+            --arg summary "Provider tests: $PROVIDER_RESULT. Official three-algorithm matrix: $OFFICIAL_RESULT. REVIEW still requires manual confirmation; this check does not certify conformance." \
+            '{status:"completed",conclusion:$conclusion,output:{title:"Daily upstream validation",summary:$summary}}' > "$RUNNER_TEMP/conformance-check.json"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID" \
+            --input "$RUNNER_TEMP/conformance-check.json" >/dev/null
+          test "$conclusion" = success
