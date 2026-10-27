@@ -13,8 +13,8 @@
     "build": "wrangler deploy --dry-run --outdir .build",
     "test": "npm run build && node --test test/*.test.mjs",
     "deploy": "wrangler deploy",
-    "format": "prettier --write src test scripts *.json *.jsonc README.md .github/workflows",
-    "format:check": "prettier --check src test scripts *.json *.jsonc README.md .github/workflows",
+    "format": "prettier --write src test scripts *.json *.jsonc README.md docs .github/workflows",
+    "format:check": "prettier --check src test scripts *.json *.jsonc README.md docs .github/workflows",
     "test:conformance": "bash scripts/conformance/run.sh"
   },
   "dependencies": {
