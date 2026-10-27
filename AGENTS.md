@@ -29,6 +29,8 @@ of routine reversible steps.
   constraints, hashes and comparisons.
 - `src/state.ts`: Durable Object transactions, one-time consumption, replay
   records and expiration cleanup.
+- `src/errors.ts`: fixed public authorization error reasons; never reflect
+  request values or low-level exception messages in error pages.
 - `src/http.ts`: bounded body reading; `src/types.ts`: shared types and helpers.
 - `scripts/setup-local.mjs`: private local configuration generation.
 - `test/*.test.mjs`: Node test runner with real Miniflare/workerd and persistent
@@ -40,7 +42,8 @@ of routine reversible steps.
   self-contained official Federation OP suite run. See `docs/setup.md` for JDK/Maven/Docker
   prerequisites and local HTTPS/CA handling. `npm run test:conformance` executes all
   20 pinned upstream modules; it is not part of the ordinary `npm test` command.
-  The CI execution gate accepts complete PASSED or REVIEW results. Strict
+  The CI execution gate accepts complete PASSED or REVIEW results only when all
+  13 negative response checks also succeed (see `docs/conformance-negative.md`). Strict
   conformance success still requires all PASSED. Preserve REVIEW/WARNING/
   SKIPPED/FAILED/incomplete distinctions; never rewrite manual review as a pass.
   Artifacts contain result metadata only, not raw suite logs/configs/private keys.

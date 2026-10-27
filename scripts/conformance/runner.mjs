@@ -10,6 +10,11 @@ import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { privateJWK } from "../setup-local.mjs";
 import { classify, successful, ciSuccessful, junit } from "./results.mjs";
+import {
+  observeAuthorization,
+  checkNegative,
+  negativesSuccessful,
+} from "./negative-checks.mjs";
 const [suiteDir, runDir, mongoPort] = process.argv.slice(2);
 const pin = JSON.parse(
   await readFile("scripts/conformance/upstream.json", "utf8"),
@@ -21,6 +26,7 @@ const anchor = suite + "/test/a/" + alias + "/trust-anchor";
 const results = [];
 const startedAt = new Date().toISOString();
 let java, mf, server;
+let authorizationResponses = [];
 process.once("SIGTERM", () => {
   java?.kill("SIGTERM");
   server?.closeAllConnections();
@@ -110,7 +116,10 @@ async function writeResults() {
     plan: pin.plan,
     results,
     success: successful(results, pin.expectedModules),
-    ciSuccess: ciSuccessful(results, pin.expectedModules),
+    ciSuccess:
+      ciSuccessful(results, pin.expectedModules) &&
+      negativesSuccessful(results),
+    negativeChecksSuccess: negativesSuccessful(results),
   };
   await writeFile(
     "artifacts/conformance/results.json",
@@ -125,7 +134,7 @@ async function writeResults() {
     .map(([k, v]) => `- ${k}: ${v}`)
     .join(
       "\n",
-    )}\n\nCI accepts completed PASSED or REVIEW results. REVIEW still requires manual confirmation; strict conformance success requires every module to pass. WARNING, SKIPPED, FAILED and incomplete results fail CI. This local alpha-plan run is not OIDF certification.\n`;
+    )}\n\nCI accepts completed PASSED or REVIEW results. REVIEW still requires manual confirmation; strict conformance success requires every module to pass. WARNING, SKIPPED, FAILED and incomplete results fail CI. This local alpha-plan run is not OIDF certification.\n\nNegative response checks: ${results.filter((r) => r.negativeCheck?.verified).length}/13 verified. These checks do not approve official manual reviews.\n`;
   await writeFile("artifacts/conformance/summary.md", summary);
   if (process.env.GITHUB_STEP_SUMMARY)
     await writeFile(process.env.GITHUB_STEP_SUMMARY, summary, { flag: "a" });
@@ -221,6 +230,8 @@ try {
               : Buffer.concat(chunks),
             redirect: "manual",
           });
+          if (new URL(issuer + req.url).pathname === "/authorize")
+            authorizationResponses.push(await observeAuthorization(response));
           const headers = Object.fromEntries(response.headers);
           const cookies = response.headers.getSetCookie();
           if (cookies.length) headers["set-cookie"] = cookies;
@@ -327,6 +338,7 @@ try {
     throw new Error("unexpected or empty official module list");
   for (const module of plan.modules) {
     const name = module.testModule;
+    authorizationResponses = [];
     const q = new URLSearchParams({
       test: name,
       plan: plan.id,
@@ -345,12 +357,14 @@ try {
         () => {},
       );
     }
+    const negativeCheck = checkNegative(name, authorizationResponses);
     const result = {
       name,
       id: instance.id,
       status: info?.status ?? "UNKNOWN",
       result: info?.result ?? "UNKNOWN",
       outcome: classify(info?.status, info?.result),
+      ...(negativeCheck ? { negativeCheck } : {}),
     };
     // Persist only result metadata, never raw configs/logs containing generated
     // private JWKs, login credentials, tokens or request bodies.
@@ -372,10 +386,16 @@ try {
     console.log(
       `::notice title=Official Federation outcomes::recorded=${results.length}; expected=${pin.expectedModules}; ${outcomes}`,
     );
+    console.log(
+      `::notice title=Federation negative response checks::verified=${results.filter((r) => r.negativeCheck?.verified).length}; expected=13; success=${negativesSuccessful(results)}`,
+    );
   }
-  if (!ciSuccessful(results, pin.expectedModules)) {
+  if (
+    !ciSuccessful(results, pin.expectedModules) ||
+    !negativesSuccessful(results)
+  ) {
     console.error(
-      `Official suite CI execution gate did not pass: ${results.filter((r) => r.outcome === "passed").length}/${pin.expectedModules} PASSED; inspect results.json for REVIEW, failures and incomplete modules.`,
+      `Official suite CI execution gate did not pass: ${results.filter((r) => r.outcome === "passed").length}/${pin.expectedModules} PASSED; inspect results.json for REVIEW, failures, incomplete modules and negative response checks.`,
     );
     process.exitCode = 1;
   }

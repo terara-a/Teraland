@@ -112,9 +112,12 @@ loopback ポートを使います。既存のサービスと競合しない環�
 生のスイート設定、ログ、ZIP エクスポートは artifact に含めません。実行用の秘密鍵・
 CA・ローカル状態・私用ログと、このスクリプトが起動した MongoDB は終了時に削除します。
 
-**全20件が FINISHED で、公式判定が PASSED または REVIEW なら CI を成功にします。**
+**全20件が FINISHED で公式判定が PASSED または REVIEW、かつ異常系13件の応答検証が成功した場合に CI を成功にします。**
 ゼロ件、重複、件数不足、未完了、FAILED、WARNING、SKIPPED は引き続き失敗です。
 公式判定自体は変更せず、画面確認が必要な REVIEW を PASSED に上書きしません。
+異常系では拒否理由・HTTP 400・HTML・リダイレクト／Cookie／フォーム／認可情報の不在・
+キャッシュ抑止とページ保護ヘッダーを追加で検証します。jti 再利用では初回の受付も確認します。
+検証の詳細は [異常系の検証](conformance-negative.md) を参照してください。
 
 `results.json` の `ciSuccess` は CI 実行ゲート、`success` は全件 PASSED が必要な厳格な
 適合性判定です。CI が緑でも `success: false` と REVIEW が残る場合があります。
