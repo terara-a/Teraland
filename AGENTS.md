@@ -7,7 +7,8 @@ OpenID Federation OP automatic-registration conformance plan. It runs on
 **TypeScript + Cloudflare Workers + SQLite-backed Durable Objects**. Go was
 replaced in merged PR #2; do not use Go-era commands or reintroduce the old server.
 
-Read `README.md` for setup, configuration, deployment, features and limitations.
+Read `README.md` for features and limitations, and `docs/setup.md` for startup,
+configuration, deployment and test execution.
 The official test plan is
 `openid-federation-entity-joined-to-test-federation-op-test-plan`.
 **No public Cloudflare deployment or official conformance pass has been verified.**
@@ -36,7 +37,7 @@ of routine reversible steps.
 - `wrangler.jsonc`: bindings, migrations and non-secret deployment settings.
 - `.github/workflows/ci.yml`: install, formatting, typecheck and integration tests.
 - `.github/workflows/conformance.yml` and `scripts/conformance/`: a separate,
-  self-contained official Federation OP suite run. See README for JDK/Maven/Docker
+  self-contained official Federation OP suite run. See `docs/setup.md` for JDK/Maven/Docker
   prerequisites and local HTTPS/CA handling. `npm run test:conformance` executes all
   20 pinned upstream modules; it is not part of the ordinary `npm test` command.
   The CI execution gate accepts complete PASSED or REVIEW results. Strict
@@ -65,7 +66,7 @@ npm test
 `node --test test/*.test.mjs`. Do not repeat the build separately without a reason.
 Preserve command exit status when redirecting test output, and inspect both the
 test summary and exit code. `npm run format` formats source, tests, scripts,
-configuration and README; format `AGENTS.md` explicitly with Prettier when editing
+configuration, README and `docs/`; format `AGENTS.md` explicitly with Prettier when editing
 it. Documentation-only changes do not require the full integration suite.
 
 For local startup, run `npm run setup:local` **only if `.dev.vars` does not exist**,
