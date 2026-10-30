@@ -1,5 +1,15 @@
 import { limitedText } from "./http";
 import {
+  passwordAcr,
+  staticClients,
+  userClaims,
+  scopeClaims,
+  selectedClaims,
+  basicRequest,
+  basicCredentials,
+  authenticateStatic,
+} from "./oidc";
+import {
   RequestObjectError,
   requestErrors,
   type RequestErrorReason,
@@ -122,6 +132,8 @@ function configuration(env: Env): Config {
     password: env.TERALAND_PASSWORD,
     hosts,
     anchors: anchors as Config["anchors"],
+    clients: staticClients(env.STATIC_CLIENTS),
+    userClaims: userClaims(env.USER_CLAIMS),
   };
 }
 function metadata(c: Config) {
@@ -136,11 +148,34 @@ function metadata(c: Config) {
     response_modes_supported: ["query"],
     grant_types_supported: ["authorization_code"],
     subject_types_supported: ["public"],
-    scopes_supported: ["openid", "profile"],
-    claims_supported: ["iss", "sub", "aud", "exp", "iat", "auth_time", "nonce"],
+    scopes_supported: [
+      "openid",
+      "profile",
+      ...(Object.keys(c.clients).length ? ["email", "address", "phone"] : []),
+    ],
+    claims_supported: [
+      "iss",
+      "sub",
+      "aud",
+      "exp",
+      "iat",
+      "auth_time",
+      "nonce",
+      ...Object.keys(c.userClaims),
+      ...(Object.keys(c.clients).length ? ["acr", "amr"] : []),
+    ],
+    claims_parameter_supported: Object.keys(c.clients).length > 0,
+    ...(Object.keys(c.clients).length
+      ? { acr_values_supported: [passwordAcr] }
+      : {}),
     id_token_signing_alg_values_supported: ["RS256"],
     request_object_signing_alg_values_supported: ["RS256", "PS256", "ES256"],
-    token_endpoint_auth_methods_supported: ["private_key_jwt"],
+    token_endpoint_auth_methods_supported: [
+      "private_key_jwt",
+      ...(Object.keys(c.clients).length
+        ? ["client_secret_basic", "client_secret_post"]
+        : []),
+    ],
     token_endpoint_auth_signing_alg_values_supported: [
       "RS256",
       "PS256",
@@ -148,7 +183,7 @@ function metadata(c: Config) {
     ],
     request_parameter_supported: true,
     request_uri_parameter_supported: false,
-    require_signed_request_object: true,
+    require_signed_request_object: Object.keys(c.clients).length === 0,
     client_registration_types_supported: ["automatic"],
     code_challenge_methods_supported: ["S256"],
     authorization_response_iss_parameter_supported: true,
@@ -243,7 +278,12 @@ class Provider {
           iat: now(),
           exp: now() + 3600,
           jwks: { keys: [publicKey(c.signing)] },
-          metadata: { openid_provider: metadata(c) },
+          metadata: {
+            openid_provider: {
+              ...metadata(c),
+              require_signed_request_object: true,
+            },
+          },
           ...(Object.keys(c.anchors).length
             ? { authority_hints: Object.keys(c.anchors) }
             : {}),
@@ -251,16 +291,32 @@ class Provider {
         { headers: { "Content-Type": "application/entity-statement+jwt" } },
       );
     if (path === "/userinfo" && ["GET", "POST"].includes(r.method)) {
-      const authorization = r.headers.get("authorization") ?? "";
-      const match = /^Bearer (\S+)$/i.exec(authorization);
-      const a = match
+      const authorization = r.headers.get("authorization");
+      const body =
+        r.method === "POST" &&
+        r.headers.get("content-type")?.split(";")[0].trim() ===
+          "application/x-www-form-urlencoded"
+          ? new URLSearchParams(await limitedText(r.body))
+          : new URLSearchParams();
+      if (
+        new URL(r.url).searchParams.has("access_token") ||
+        (authorization && body.has("access_token")) ||
+        body.getAll("access_token").length > 1
+      )
+        return fail("invalid_request");
+      const match = authorization
+        ? /^Bearer (\S+)$/i.exec(authorization)
+        : null;
+      const token =
+        match?.[1] ?? (!authorization ? body.get("access_token") : null);
+      const a = token
         ? await this.store.call<ObjectMap | null>(
             "get",
-            "token:" + (await hash(match[1])),
+            "token:" + (await hash(token)),
           )
         : null;
       return a
-        ? json({ sub: a.subject })
+        ? json({ ...obj(a.userinfo), sub: a.subject })
         : new Response(JSON.stringify({ error: "invalid_token" }), {
             status: 401,
             headers: {
@@ -306,6 +362,8 @@ class Provider {
   async authorize(r: Request) {
     const f = await form(r);
     let a: AuthRequest;
+    const staticClient = this.c.clients[f.get("client_id") ?? ""];
+    if (staticClient) return this.basicAuthorize(r, f, staticClient);
     if (f.has("request_uri")) {
       if (f.has("request")) return authorizationFailure("invalid_request");
       const id = f.get("client_id") ?? "";
@@ -342,6 +400,134 @@ class Provider {
     }
     if (strings(str(a.claims, "prompt").split(/\s+/)).includes("none"))
       return callback(this.c, a, { error: "login_required" });
+    return this.loginForm(a);
+  }
+  async basicAuthorize(r: Request, f: URLSearchParams, client: ObjectMap) {
+    const a = basicRequest(client, f);
+    if (!strings(client.redirect_uris).includes(f.get("redirect_uri") ?? ""))
+      return authorizationFailure("invalid_redirect_uri");
+    const error = (code: string) => callback(this.c, a, { error: code });
+    if (f.has("request")) return error("request_not_supported");
+    if (f.has("request_uri")) return error("request_uri_not_supported");
+    if (!f.has("response_type")) return error("invalid_request");
+    if (f.get("response_type") !== "code")
+      return error("unsupported_response_type");
+    const scopes = (f.get("scope") ?? "").split(/\s+/);
+    if (
+      !scopes.includes("openid") ||
+      scopes.some((s) => s !== "openid" && !Object.hasOwn(scopeClaims, s))
+    )
+      return error("invalid_scope");
+    if (f.has("response_mode") && f.get("response_mode") !== "query")
+      return error("invalid_request");
+    if (f.has("code_challenge") || f.has("code_challenge_method")) {
+      if (
+        f.get("code_challenge_method") !== "S256" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(f.get("code_challenge") ?? "")
+      )
+        return error("invalid_request");
+    }
+    if (f.has("claims")) {
+      try {
+        const requested = JSON.parse(f.get("claims")!);
+        if (
+          !requested ||
+          typeof requested !== "object" ||
+          Array.isArray(requested)
+        )
+          return error("invalid_request");
+        for (const part of ["userinfo", "id_token"]) {
+          if (
+            part in requested &&
+            (!requested[part] ||
+              typeof requested[part] !== "object" ||
+              Array.isArray(requested[part]))
+          )
+            return error("invalid_request");
+          for (const value of Object.values(obj(requested[part]))) {
+            if (
+              value !== null &&
+              (typeof value !== "object" || Array.isArray(value))
+            )
+              return error("invalid_request");
+            const claim = obj(value);
+            if ("essential" in claim && typeof claim.essential !== "boolean")
+              return error("invalid_request");
+          }
+        }
+        const acr = obj(obj(requested).id_token).acr;
+        const requirement = obj(acr);
+        if (
+          requirement.essential === true &&
+          (("value" in requirement && requirement.value !== passwordAcr) ||
+            ("values" in requirement &&
+              !strings(requirement.values).includes(passwordAcr)))
+        )
+          return error("access_denied");
+        a.claims.claims = requested;
+      } catch {
+        return error("invalid_request");
+      }
+    }
+    const prompts = (f.get("prompt") ?? "").split(/\s+/).filter(Boolean);
+    if (
+      prompts.some(
+        (p) => !["none", "login", "consent", "select_account"].includes(p),
+      ) ||
+      (prompts.includes("none") && prompts.length !== 1)
+    )
+      return error("invalid_request");
+    let maxAge: number | undefined;
+    if (f.has("max_age")) {
+      if (
+        !/^\d+$/.test(f.get("max_age")!) ||
+        !Number.isSafeInteger(Number(f.get("max_age")))
+      )
+        return error("invalid_request");
+      maxAge = Number(f.get("max_age"));
+    }
+    const sessionId = (r.headers.get("cookie") ?? "")
+      .split(";")
+      .map((x) => x.trim())
+      .find((x) => x.startsWith("teraland_session="))
+      ?.slice("teraland_session=".length);
+    const session =
+      sessionId && /^[a-f0-9-]{68}$/.test(sessionId)
+        ? await this.store.call<ObjectMap | null>(
+            "get",
+            "session:" + (await hash(sessionId)),
+          )
+        : null;
+    const subject = await hash(this.c.issuer + "\0" + this.c.username);
+    if (f.has("id_token_hint")) {
+      try {
+        const hint = await verify(f.get("id_token_hint")!, {
+          keys: [publicKey(this.c.signing)],
+        });
+        if (
+          hint.iss !== this.c.issuer ||
+          hint.sub !== subject ||
+          !has(hint.aud, str(client, "client_id"))
+        )
+          return error("invalid_request");
+      } catch {
+        return error("invalid_request");
+      }
+    }
+    if (
+      session &&
+      session.subject === subject &&
+      !prompts.includes("login") &&
+      !prompts.includes("select_account") &&
+      !prompts.includes("consent") &&
+      (maxAge === undefined ||
+        (maxAge > 0 && now() - num(session, "authTime") <= maxAge))
+    )
+      return this.issueCode(a, subject, num(session, "authTime"));
+    if (prompts.includes("none")) return error("login_required");
+    return this.loginForm(a);
+  }
+  async loginForm(a: AuthRequest) {
     const id = random();
     a.csrf = random();
     await this.store.call("put", "login:" + id, a);
@@ -388,41 +574,90 @@ class Provider {
     )
       response = fail("access_denied", 401);
     else {
-      const code = random();
-      const g: Grant = {
-        client: str(a.claims, "client_id"),
-        redirect: str(a.claims, "redirect_uri"),
-        nonce: str(a.claims, "nonce"),
-        scope: str(a.claims, "scope"),
-        challenge: str(a.claims, "code_challenge"),
-        subject: await hash(this.c.issuer + "\0" + this.c.username),
-        authTime: now(),
-        exp: Math.min(now() + 60, num(a.client, "trust_exp")),
-      };
-      await this.store.call("put", "code:" + (await hash(code)), g);
-      response = callback(this.c, a, { code });
+      const subject = await hash(this.c.issuer + "\0" + this.c.username),
+        authTime = now();
+      response = await this.issueCode(a, subject, authTime);
+      if (a.client.static_client) {
+        const session = random();
+        await this.store.call("put", "session:" + (await hash(session)), {
+          subject,
+          authTime,
+          exp: now() + 3600,
+        });
+        response.headers.append(
+          "Set-Cookie",
+          `teraland_session=${session}; Path=${new URL(this.c.issuer).pathname.replace(/\/$/, "")}/; HttpOnly; ${new URL(this.c.issuer).protocol === "https:" ? "Secure; " : ""}SameSite=Lax; Max-Age=3600`,
+        );
+      }
     }
-    response.headers.set("Set-Cookie", cookie(this.c, id, "", 0));
+    response.headers.append("Set-Cookie", cookie(this.c, id, "", 0));
     return response;
   }
+  async issueCode(a: AuthRequest, subject: string, authTime: number) {
+    const code = random();
+    const requested = obj(a.claims.claims);
+    const g: Grant = {
+      client: str(a.claims, "client_id"),
+      redirect: str(a.claims, "redirect_uri"),
+      nonce: str(a.claims, "nonce"),
+      scope: str(a.claims, "scope"),
+      challenge: str(a.claims, "code_challenge"),
+      subject,
+      authTime,
+      exp: Math.min(now() + 60, num(a.client, "trust_exp")),
+      ...(a.client.static_client
+        ? {
+            userinfo: selectedClaims(
+              this.c.userClaims,
+              str(a.claims, "scope"),
+              requested.userinfo,
+            ),
+            idClaims: {
+              ...selectedClaims(this.c.userClaims, "", requested.id_token),
+              acr: passwordAcr,
+              amr: ["pwd"],
+            },
+          }
+        : {}),
+    };
+    await this.store.call("put", "code:" + (await hash(code)), g);
+    return callback(this.c, a, { code });
+  }
   async token(r: Request) {
+    if (new URL(r.url).search) return fail("invalid_request");
     const f = await form(r);
     if (f.get("grant_type") !== "authorization_code")
       return fail("unsupported_grant_type");
-    const id = f.get("client_id") ?? "";
+    let id = "";
     try {
-      const rp = await this.federation.relyingParty(id);
-      await authenticate(this.c, f, rp, "/token", this.store);
+      const credentials = basicCredentials(r, f);
+      id = credentials.id;
+      const client = this.c.clients[id];
+      if (client) await authenticateStatic(client, credentials.secret, f);
+      else {
+        requireThat(
+          !r.headers.has("authorization") && !f.has("client_secret"),
+          "Unsupported authentication",
+        );
+        const rp = await this.federation.relyingParty(id);
+        await authenticate(this.c, f, rp, "/token", this.store);
+      }
     } catch {
-      return fail("invalid_client", 401);
+      return new Response(JSON.stringify({ error: "invalid_client" }), {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": 'Basic realm="Teraland"',
+        },
+      });
     }
-    const g = await this.store.call<Grant | null>(
-      "take",
-      "code:" + (await hash(f.get("code") ?? "")),
-      undefined,
-      { client: id },
-    );
-    if (!g || g.redirect !== f.get("redirect_uri"))
+    const codeKey = "code:" + (await hash(f.get("code") ?? ""));
+    const g = await this.store.call<Grant | null>("get", codeKey);
+    if (!g) {
+      await this.store.call("reuse", codeKey, undefined, { client: id });
+      return fail("invalid_grant");
+    }
+    if (g.client !== id || g.redirect !== f.get("redirect_uri"))
       return fail("invalid_grant");
     if (g.challenge) {
       const v = f.get("code_verifier") ?? "";
@@ -444,13 +679,20 @@ class Provider {
       exp: now() + 300,
       auth_time: g.authTime,
       at_hash: base64url.encode(digest.slice(0, 16)),
+      ...g.idClaims,
       ...(g.nonce ? { nonce: g.nonce } : {}),
     };
     const jwt = await sign(this.c.signing, "JWT", claims);
-    await this.store.call("put", "token:" + (await hash(token)), {
-      subject: g.subject,
-      exp: now() + 300,
-    });
+    const consumed = await this.store.call(
+      "redeem",
+      codeKey,
+      {
+        tokenKey: "token:" + (await hash(token)),
+        token: { subject: g.subject, userinfo: g.userinfo, exp: now() + 300 },
+      },
+      { client: id },
+    );
+    if (!consumed) return fail("invalid_grant");
     return json({
       access_token: token,
       token_type: "Bearer",

@@ -3,7 +3,7 @@
 ## Goal and current implementation
 
 Teraland is a personal OpenID Provider PoC targeting the OpenID Foundation's
-OpenID Federation OP automatic-registration conformance plan. It runs on
+OpenID Federation OP automatic-registration and OIDC Core Basic conformance plans. It runs on
 **TypeScript + Cloudflare Workers + SQLite-backed Durable Objects**. Go was
 replaced in merged PR #2; do not use Go-era commands or reintroduce the old server.
 
@@ -23,6 +23,8 @@ of routine reversible steps.
 ## Repository map
 
 - `src/index.ts`: Worker configuration, discovery, login, OIDC endpoints.
+- `src/oidc.ts`: explicit static-client configuration, secret authentication,
+  requested-claim selection and the password-only ACR. See `docs/oidc-basic.md`.
 - `src/federation.ts`: bounded discovery, pinned trust chains, effective RP
   metadata and signed request validation.
 - `src/crypto.ts`: JOSE operations, public-key validation, registered algorithm
@@ -42,7 +44,10 @@ of routine reversible steps.
   self-contained official Federation OP suite run. See `docs/setup.md` for JDK/Maven/Docker
   prerequisites and local HTTPS/CA handling. `npm run test:conformance` executes all
   20 pinned upstream modules per RP signing algorithm (RS256 default; CI also runs
-  PS256 and ES256, for 60 combinations); it is not part of the ordinary `npm test` command.
+  PS256 and ES256, for 60 combinations). `CONFORMANCE_PROFILE=basic` instead runs
+  the 35 applicable static-client OIDC Basic modules; CI runs that profile too.
+  The optional skips/reviews are restricted by `scripts/conformance/basic.json`.
+  Neither profile is part of the ordinary `npm test` command.
   The CI execution gate accepts complete PASSED or REVIEW results only when all
   13 negative response checks also succeed (see `docs/conformance-negative.md`). Strict
   conformance success still requires all PASSED. Preserve REVIEW/WARNING/
@@ -117,7 +122,14 @@ responses before diagnosing it as a blocker.
 - PAR/login request lifetime cannot exceed request-object or verified trust
   expiration. A newly issued code gets its own 60 seconds, capped by the verified
   RP's `trust_exp`, not by the consumed request's remaining lifetime.
-- Record `auth_time` at login, not token exchange. Support GET and POST UserInfo.
+- Record `auth_time` at login, not token exchange. Static-client SSO must preserve
+  it; prompt=login/max_age require fresh authentication. An ID-token hint is not
+  authentication. Never assert a stronger ACR than the actual password method.
+- Static clients are explicit opaque IDs, never a fallback for HTTPS Federation
+  identifiers. Reject mixed client authentication and unregistered callbacks.
+  Keep code redemption, token issuance and replay revocation transactional.
+- Support GET and POST UserInfo, including POST form access_token. Reject mixed
+  bearer transports and disclose only claims requested by scopes/claims.
 - Use per-request CSRF cookies so tabs do not invalidate each other. Keep Origin
   checks, escaping, cache suppression and a login-page CSP that permits only the
   already-validated callback origin alongside self.
@@ -128,7 +140,8 @@ Never print, commit, overwrite or copy private JWKs/passwords into instructions.
 `.dev.vars`, `.wrangler/` and `.local/` are ignored local state. Go-era private JWKs
 may still exist in `.local/teraland/`; they remain usable for migration and must
 not be deleted or rotated casually. Production uses Cloudflare Secrets for
-`SIGNING_JWK`, `ENCRYPTION_JWK`, `TERALAND_USERNAME`, `TERALAND_PASSWORD`.
+`SIGNING_JWK`, `ENCRYPTION_JWK`, `TERALAND_USERNAME`, `TERALAND_PASSWORD`,
+optional `STATIC_CLIENTS` and `USER_CLAIMS`.
 Deployments require the real HTTPS issuer, approved federation hosts and pinned
 anchors; avoid deploying placeholder settings. Do not run `npm run deploy` or
 create tunnels merely to validate a local change.

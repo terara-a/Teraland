@@ -1,0 +1,50 @@
+{
+  "plan": "oidcc-basic-certification-test-plan",
+  "modules": [
+    "oidcc-alternate-happy-flow",
+    "oidcc-claims-essential",
+    "oidcc-claims-locales",
+    "oidcc-codereuse",
+    "oidcc-codereuse-30seconds",
+    "oidcc-display-page",
+    "oidcc-display-popup",
+    "oidcc-ensure-post-request-succeeds",
+    "oidcc-ensure-registered-redirect-uri",
+    "oidcc-ensure-request-object-with-redirect-uri",
+    "oidcc-ensure-request-with-acr-values-succeeds",
+    "oidcc-ensure-request-with-unknown-parameter-succeeds",
+    "oidcc-ensure-request-with-valid-pkce-succeeds",
+    "oidcc-ensure-request-without-nonce-succeeds-for-code-flow",
+    "oidcc-id-token-hint",
+    "oidcc-login-hint",
+    "oidcc-max-age-1",
+    "oidcc-max-age-10000",
+    "oidcc-prompt-login",
+    "oidcc-prompt-none-logged-in",
+    "oidcc-prompt-none-not-logged-in",
+    "oidcc-refresh-token",
+    "oidcc-response-type-missing",
+    "oidcc-scope-address",
+    "oidcc-scope-all",
+    "oidcc-scope-email",
+    "oidcc-scope-phone",
+    "oidcc-scope-profile",
+    "oidcc-server",
+    "oidcc-server-client-secret-post",
+    "oidcc-ui-locales",
+    "oidcc-unsigned-request-object-supported-correctly-or-rejected-as-unsupported",
+    "oidcc-userinfo-get",
+    "oidcc-userinfo-post-body",
+    "oidcc-userinfo-post-header"
+  ],
+  "allowedSkips": [
+    "oidcc-refresh-token",
+    "oidcc-unsigned-request-object-supported-correctly-or-rejected-as-unsupported",
+    "oidcc-ensure-request-object-with-redirect-uri"
+  ],
+  "allowedReviews": [
+    "oidcc-prompt-login",
+    "oidcc-max-age-1",
+    "oidcc-ensure-registered-redirect-uri"
+  ]
+}

@@ -132,7 +132,7 @@ jobs:
             conclusion=success
           fi
           jq -n --arg conclusion "$conclusion" \
-            --arg summary "Provider tests: $PROVIDER_RESULT. Official three-algorithm matrix: $OFFICIAL_RESULT. REVIEW still requires manual confirmation; this check does not certify conformance." \
+            --arg summary "Provider tests: $PROVIDER_RESULT. Official Federation three-algorithm matrix and OIDC Basic: $OFFICIAL_RESULT. REVIEW still requires manual confirmation; this check does not certify conformance." \
             '{status:"completed",conclusion:$conclusion,output:{title:"Daily upstream validation",summary:$summary}}' > "$RUNNER_TEMP/conformance-check.json"
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID" \
             --input "$RUNNER_TEMP/conformance-check.json" >/dev/null
