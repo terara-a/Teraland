@@ -1,6 +1,6 @@
 # 起動・実行手順
 
-[README](../README.md)
+[README](../README.md) · [ディレクトリと責務の境界](architecture.md)
 
 ## ローカル開発
 
@@ -108,7 +108,7 @@ loopback ポートを使います。既存のサービスと競合しない環�
 `CONFORMANCE_SUITE_DIR` で既存の checkout を指定できますが、指定された固定 SHA と
 一致し、追跡ファイルに変更がない必要があります。固定 SHA とモジュール数は
 `scripts/conformance/upstream.json` に一元化しています。CI もこの値から checkout します。
-確認済みのテスト名は `scripts/conformance/modules.json` に記録し、実際のプランと照合します。
+確認済みのテスト名は `scripts/conformance/federation/modules.json` に記録し、実際のプランと照合します。
 [日次更新](conformance-updates.md)は更新PRを作成し、自動マージは行いません。
 
 ローカル実行は1方式ずつで、次の実行が前の成果物を置き換えます。CI は3方式を独立した

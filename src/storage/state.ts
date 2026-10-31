@@ -1,6 +1,6 @@
-import { ReplayError } from "./errors";
+import { ReplayError } from "../shared/errors";
 import { DurableObject } from "cloudflare:workers";
-import { now, obj, requireThat, type Entry } from "./types";
+import { now, obj, requireThat, type Entry } from "../shared/types";
 // Only the Worker can reach this binding. Every read/consume is transactional;
 // isolate restarts and simultaneous requests cannot reuse a code or JTI.
 export class ProviderState extends DurableObject {
@@ -107,7 +107,7 @@ export class Store {
   }
   async remember(kind: string, client: string, jti: string, exp: number) {
     requireThat(jti && jti.length <= 256, "missing jti");
-    const { hash } = await import("./crypto");
+    const { hash } = await import("../shared/crypto");
     const remembered = await this.call(
       "once",
       "replay:" + (await hash(JSON.stringify([kind, client, jti]))),

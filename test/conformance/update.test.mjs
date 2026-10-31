@@ -6,7 +6,7 @@ import {
   moduleChanges,
   reviewedPlan,
   withoutComments,
-} from "../scripts/conformance/update.mjs";
+} from "../../scripts/conformance/update.mjs";
 const plan = "example-plan";
 const sources = [
   `@PublishTestPlan(testPlanName = "example-plan", testModules = {
@@ -61,10 +61,10 @@ test("reviewed manifest matches the pin and covers every negative response expec
     await readFile("scripts/conformance/upstream.json", "utf8"),
   );
   const modules = JSON.parse(
-    await readFile("scripts/conformance/modules.json", "utf8"),
+    await readFile("scripts/conformance/federation/modules.json", "utf8"),
   );
   const { negativeReasons } =
-    await import("../scripts/conformance/negative-checks.mjs");
+    await import("../../scripts/conformance/federation/negative-checks.mjs");
   assert.equal(reviewedPlan(modules, modules, pin.expectedModules), true);
   for (const name of Object.keys(negativeReasons))
     assert.ok(modules.includes(name));
@@ -91,7 +91,9 @@ test("updater CLI pins a real checkout, preserves review decisions and is idempo
       ),
     );
   try {
-    await mkdir(join(root, "scripts/conformance"), { recursive: true });
+    await mkdir(join(root, "scripts/conformance/federation"), {
+      recursive: true,
+    });
     await mkdir(join(root, ".local"));
     await mkdir(join(suite, "src/main/java"), { recursive: true });
     for (const [index, source] of sources.entries())
@@ -110,7 +112,10 @@ test("updater CLI pins a real checkout, preserves review decisions and is idempo
       "Fixture",
     ]);
     const pinPath = join(root, "scripts/conformance/upstream.json");
-    const manifestPath = join(root, "scripts/conformance/modules.json");
+    const manifestPath = join(
+      root,
+      "scripts/conformance/federation/modules.json",
+    );
     await writeFile(
       pinPath,
       JSON.stringify({
