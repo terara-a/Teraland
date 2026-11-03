@@ -11,7 +11,7 @@ import {
   createLocalJWKSet,
   CompactEncrypt,
 } from "jose";
-import { privateJWK } from "../scripts/setup-local.mjs";
+import { privateJWK } from "../../scripts/setup-local.mjs";
 const issuer = "https://op.example",
   rp = "https://rp.example",
   anchor = "https://anchor.example";

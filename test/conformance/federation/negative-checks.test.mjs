@@ -5,7 +5,7 @@ import {
   observeAuthorization,
   checkNegative,
   negativesSuccessful,
-} from "../scripts/conformance/negative-checks.mjs";
+} from "../../../scripts/conformance/federation/negative-checks.mjs";
 function response(reason, { body = "", headers = {}, status = 400 } = {}) {
   return new Response(
     `<p id="authorization-error" data-error="invalid_request_object" data-reason="${reason}">Rejected</p>${body}`,

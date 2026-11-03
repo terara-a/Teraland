@@ -70,7 +70,7 @@ export async function update(suiteDir) {
   const pinPath = "scripts/conformance/upstream.json";
   const pin = JSON.parse(await readFile(pinPath, "utf8"));
   const reviewed = JSON.parse(
-    await readFile("scripts/conformance/modules.json", "utf8"),
+    await readFile("scripts/conformance/federation/modules.json", "utf8"),
   );
   const revision = execFileSync("git", ["-C", suiteDir, "rev-parse", "HEAD"], {
     encoding: "utf8",

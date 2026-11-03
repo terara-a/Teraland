@@ -40,13 +40,13 @@ Allow GitHub Actions to create and approve pull requests** を有効にする必
 ## テスト構成が変わった場合
 
 更新処理は新しい件数を候補の `expectedModules` に記録しますが、確認済みテスト名の
-`scripts/conformance/modules.json` と異常系の期待値を自動変更しません。
+`scripts/conformance/federation/modules.json` と異常系の期待値を自動変更しません。
 実行時に公式APIが返すテスト名を確認済みリストと照合するため、件数が同じでも
 テストの入れ替わりは失敗になります。
 
 追加・削除されたテストや新しい異常系の要求を確認し、必要なProvider実装と回帰テスト、
 確認済みリスト、拒否応答の期待値を更新してから再検証してください。
-Basicの確認済み構成は `scripts/conformance/basic.json` で固定し、追加・削除も実行時に検出します。
+Basicの確認済み構成は `scripts/conformance/basic/profile.json` で固定し、追加・削除も実行時に検出します。
 公式の REVIEW は引き続き人手確認待ちです。CI成功を全件PASSEDや認証取得とは扱いません。
 
 上流のJavaアノテーションが動的な指定などに変わって解析できない場合は、安全側に失敗し、

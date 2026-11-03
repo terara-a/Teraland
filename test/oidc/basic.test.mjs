@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { jwtVerify, createLocalJWKSet } from "jose";
-import { privateJWK } from "../scripts/setup-local.mjs";
+import { privateJWK } from "../../scripts/setup-local.mjs";
 const issuer = "https://op.example",
   redirect = "https://app.example/callback?registered=1",
   id = "web-app",

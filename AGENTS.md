@@ -22,20 +22,22 @@ of routine reversible steps.
 
 ## Repository map
 
-- `src/index.ts`: Worker configuration, discovery, login, OIDC endpoints.
-- `src/oidc.ts`: explicit static-client configuration, secret authentication,
-  requested-claim selection and the password-only ACR. See `docs/oidc-basic.md`.
-- `src/federation.ts`: bounded discovery, pinned trust chains, effective RP
-  metadata and signed request validation.
-- `src/crypto.ts`: JOSE operations, public-key validation, registered algorithm
-  constraints, hashes and comparisons.
-- `src/state.ts`: Durable Object transactions, one-time consumption, replay
-  records and expiration cleanup.
-- `src/errors.ts`: fixed public authorization error reasons; never reflect
-  request values or low-level exception messages in error pages.
-- `src/http.ts`: bounded body reading; `src/types.ts`: shared types and helpers.
+- `src/index.ts`: Worker entry point and common response headers; `src/config.ts`:
+  configuration validation; `src/provider.ts`: composition and routing.
+- `src/oidc/`: Core authorization, code/token issuance, UserInfo, PAR, discovery,
+  static clients and claim selection. See `docs/oidc-basic.md`.
+- `src/federation/`: bounded discovery, pinned trust chains, effective RP
+  metadata and signed request validation. Supplies Core's `FederatedClients`
+  contract; Core must not import the Federation implementation.
+- `src/identity/`: password login, CSRF and server-side sessions. Receives the
+  post-authentication callback from the composition root; never issues tokens.
+- `src/storage/state.ts`: Durable Object transactions, replay records and cleanup.
+  Keep the exported `ProviderState` name, binding, migration and stored keys stable.
+- `src/shared/`: JOSE, bounded HTTP/form reading, fixed errors and shared types.
+  Do not introduce dependencies on the protocol or identity implementations here.
+- `docs/architecture.md`: context boundaries, dependency rules and test layout.
 - `scripts/setup-local.mjs`: private local configuration generation.
-- `test/*.test.mjs`: Node test runner with real Miniflare/workerd and persistent
+- `test/**/*.test.mjs`: Node test runner with real Miniflare/workerd and persistent
   SQLite Durable Objects. Remote federation documents are mocked at outbound
   fetch, not by bypassing signature or trust verification.
 - `wrangler.jsonc`: bindings, migrations and non-secret deployment settings.
@@ -46,7 +48,7 @@ of routine reversible steps.
   20 pinned upstream modules per RP signing algorithm (RS256 default; CI also runs
   PS256 and ES256, for 60 combinations). `CONFORMANCE_PROFILE=basic` instead runs
   the 35 applicable static-client OIDC Basic modules; CI runs that profile too.
-  The optional skips/reviews are restricted by `scripts/conformance/basic.json`.
+  The optional skips/reviews are restricted by `scripts/conformance/basic/profile.json`.
   Neither profile is part of the ordinary `npm test` command.
   The CI execution gate accepts complete PASSED or REVIEW results only when all
   13 negative response checks also succeed (see `docs/conformance-negative.md`). Strict
@@ -57,7 +59,7 @@ of routine reversible steps.
 - `.github/workflows/update-conformance.yml`: daily upstream update proposals at
   06:05 JST (21:05 UTC), never auto-merged. See `docs/conformance-updates.md`.
   Keep the SHA only in `scripts/conformance/upstream.json`. The reviewed module
-  manifest (`modules.json`) and negative expectations require explicit review;
+  manifest (`federation/modules.json`) and negative expectations require explicit review;
   do not auto-approve new test identities by only changing a count.
   GITHUB_TOKEN-created PRs need explicit reusable CI invocation and a check on
   their proposed head SHA. Never give suite execution jobs write permissions.
@@ -80,7 +82,7 @@ npm test
 ```
 
 `npm test` already runs `npm run build` (Wrangler deployment **dry-run**), then
-`node --test test/*.test.mjs`. Do not repeat the build separately without a reason.
+`node --test "test/**/*.test.mjs"`. Do not repeat the build separately without a reason.
 Preserve command exit status when redirecting test output, and inspect both the
 test summary and exit code. `npm run format` formats source, tests, scripts,
 configuration, README and `docs/`; format `AGENTS.md` explicitly with Prettier when editing

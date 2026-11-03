@@ -10,18 +10,13 @@ import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { reviewedPlan } from "./update.mjs";
 import { privateJWK } from "../setup-local.mjs";
-import {
-  classify,
-  successful,
-  ciSuccessful,
-  basicSuccessful,
-  junit,
-} from "./results.mjs";
+import { classify, successful, ciSuccessful, junit } from "./results.mjs";
+import { basicSuccessful } from "./basic/results.mjs";
 import {
   observeAuthorization,
   checkNegative,
   negativesSuccessful,
-} from "./negative-checks.mjs";
+} from "./federation/negative-checks.mjs";
 const [suiteDir, runDir, mongoPort] = process.argv.slice(2);
 const basic = process.env.CONFORMANCE_PROFILE === "basic";
 if (
@@ -30,13 +25,13 @@ if (
 )
   throw new Error("Invalid conformance profile");
 const basicProfile = JSON.parse(
-  await readFile("scripts/conformance/basic.json", "utf8"),
+  await readFile("scripts/conformance/basic/profile.json", "utf8"),
 );
 const outputDir = basic
   ? "artifacts/conformance-basic"
   : "artifacts/conformance";
 let reviewedModules = JSON.parse(
-  await readFile("scripts/conformance/modules.json", "utf8"),
+  await readFile("scripts/conformance/federation/modules.json", "utf8"),
 );
 const pin = JSON.parse(
   await readFile("scripts/conformance/upstream.json", "utf8"),

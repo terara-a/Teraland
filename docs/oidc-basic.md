@@ -77,7 +77,7 @@ CONFORMANCE_PROFILE=basic npm run test:conformance
 公式のvariant選択によってこの構成の対象から外れます。
 CIではFederationの60通りとは別の `official-oidc-basic` ジョブで実行し、日次更新PRも両方を検証します。
 
-確認済みのモジュール名と判定方針は `scripts/conformance/basic.json` にあります。
+確認済みのモジュール名と判定方針は `scripts/conformance/basic/profile.json` にあります。
 以下だけをCIで非ブロッキングとし、公式判定は変更しません。
 
 | 公式判定 | 対象                                                                  |
