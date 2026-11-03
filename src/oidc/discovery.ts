@@ -1,8 +1,13 @@
 import { passwordAcr } from "../identity/method";
 import type { Config } from "../shared/types";
 export function metadata(c: Config) {
+  const registered =
+    Object.keys(c.clients).length > 0 || Boolean(c.registrationToken);
   return {
     issuer: c.issuer,
+    ...(c.registrationToken
+      ? { registration_endpoint: c.issuer + "/register" }
+      : {}),
     authorization_endpoint: c.issuer + "/authorize",
     token_endpoint: c.issuer + "/token",
     userinfo_endpoint: c.issuer + "/userinfo",
@@ -15,7 +20,7 @@ export function metadata(c: Config) {
     scopes_supported: [
       "openid",
       "profile",
-      ...(Object.keys(c.clients).length ? ["email", "address", "phone"] : []),
+      ...(registered ? ["email", "address", "phone"] : []),
     ],
     claims_supported: [
       "iss",
@@ -26,19 +31,15 @@ export function metadata(c: Config) {
       "auth_time",
       "nonce",
       ...Object.keys(c.userClaims),
-      ...(Object.keys(c.clients).length ? ["acr", "amr"] : []),
+      ...(registered ? ["acr", "amr"] : []),
     ],
-    claims_parameter_supported: Object.keys(c.clients).length > 0,
-    ...(Object.keys(c.clients).length
-      ? { acr_values_supported: [passwordAcr] }
-      : {}),
+    claims_parameter_supported: registered,
+    ...(registered ? { acr_values_supported: [passwordAcr] } : {}),
     id_token_signing_alg_values_supported: ["RS256"],
     request_object_signing_alg_values_supported: ["RS256", "PS256", "ES256"],
     token_endpoint_auth_methods_supported: [
       "private_key_jwt",
-      ...(Object.keys(c.clients).length
-        ? ["client_secret_basic", "client_secret_post"]
-        : []),
+      ...(registered ? ["client_secret_basic", "client_secret_post"] : []),
     ],
     token_endpoint_auth_signing_alg_values_supported: [
       "RS256",
@@ -47,7 +48,7 @@ export function metadata(c: Config) {
     ],
     request_parameter_supported: true,
     request_uri_parameter_supported: false,
-    require_signed_request_object: Object.keys(c.clients).length === 0,
+    require_signed_request_object: !registered,
     client_registration_types_supported: ["automatic"],
     code_challenge_methods_supported: ["S256"],
     authorization_response_iss_parameter_supported: true,

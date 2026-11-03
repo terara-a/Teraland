@@ -72,7 +72,7 @@ export class Login {
       const subject = await hash(this.c.issuer + "\0" + this.c.username),
         authTime = now();
       response = await this.complete(a, subject, authTime);
-      if (a.client.static_client) {
+      if (a.client.static_client || a.client.dynamic_client) {
         await createSession(this.c, this.store, response, subject, authTime);
       }
     }
