@@ -25,7 +25,8 @@ of routine reversible steps.
 - `src/index.ts`: Worker entry point and common response headers; `src/config.ts`:
   configuration validation; `src/provider.ts`: composition and routing.
 - `src/oidc/`: Core authorization, code/token issuance, UserInfo, PAR, discovery,
-  static clients and claim selection. See `docs/oidc-basic.md`.
+  static/dynamic clients and claim selection. See `docs/oidc-basic.md` and
+  `docs/oidc-registration.md`.
 - `src/federation/`: bounded discovery, pinned trust chains, effective RP
   metadata and signed request validation. Supplies Core's `FederatedClients`
   contract; Core must not import the Federation implementation.
@@ -48,6 +49,8 @@ of routine reversible steps.
   20 pinned upstream modules per RP signing algorithm (RS256 default; CI also runs
   PS256 and ES256, for 60 combinations). `CONFORMANCE_PROFILE=basic` instead runs
   the 35 applicable static-client OIDC Basic modules; CI runs that profile too.
+  `CONFORMANCE_PROFILE=basic-dynamic` runs all 38 dynamic-client Basic modules,
+  with its own reviewed `basic/dynamic-profile.json` manifest and CI job.
   The optional skips/reviews are restricted by `scripts/conformance/basic/profile.json`.
   Neither profile is part of the ordinary `npm test` command.
   The CI execution gate accepts complete PASSED or REVIEW results only when all
@@ -130,6 +133,9 @@ responses before diagnosing it as a blocker.
 - Static clients are explicit opaque IDs, never a fallback for HTTPS Federation
   identifiers. Reject mixed client authentication and unregistered callbacks.
   Keep code redemption, token issuance and replay revocation transactional.
+- Dynamic registration is opt-in and requires an initial bearer token. Keep
+  exact HTTPS callbacks, registered authentication methods, hashed secrets,
+  expiry and transactional registration limits. Never fetch registration metadata URLs.
 - Support GET and POST UserInfo, including POST form access_token. Reject mixed
   bearer transports and disclose only claims requested by scopes/claims.
 - Use per-request CSRF cookies so tabs do not invalidate each other. Keep Origin
@@ -143,7 +149,7 @@ Never print, commit, overwrite or copy private JWKs/passwords into instructions.
 may still exist in `.local/teraland/`; they remain usable for migration and must
 not be deleted or rotated casually. Production uses Cloudflare Secrets for
 `SIGNING_JWK`, `ENCRYPTION_JWK`, `TERALAND_USERNAME`, `TERALAND_PASSWORD`,
-optional `STATIC_CLIENTS` and `USER_CLAIMS`.
+optional `STATIC_CLIENTS`, `USER_CLAIMS` and `DYNAMIC_REGISTRATION_TOKEN`.
 Deployments require the real HTTPS issuer, approved federation hosts and pinned
 anchors; avoid deploying placeholder settings. Do not run `npm run deploy` or
 create tunnels merely to validate a local change.

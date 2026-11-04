@@ -12,7 +12,11 @@ import {
   type ObjectMap,
 } from "../shared/types";
 import type { Store } from "../storage/state";
-import { basicRequest, type FederatedClients } from "./clients";
+import {
+  basicRequest,
+  registeredClient,
+  type FederatedClients,
+} from "./clients";
 import { scopeClaims } from "./claims";
 import { passwordAcr } from "../identity/method";
 import type { Login } from "../identity/login";
@@ -29,8 +33,8 @@ export async function authorize(
 ) {
   const f = await form(r);
   let a: AuthRequest;
-  const staticClient = c.clients[f.get("client_id") ?? ""];
-  if (staticClient) return basicAuthorize(c, store, login, r, f, staticClient);
+  const registered = await registeredClient(c, store, f.get("client_id") ?? "");
+  if (registered) return basicAuthorize(c, store, login, r, f, registered);
   if (f.has("request_uri")) {
     if (f.has("request")) return authorizationFailure("invalid_request");
     const id = f.get("client_id") ?? "";

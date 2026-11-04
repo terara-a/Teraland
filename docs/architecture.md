@@ -47,3 +47,6 @@ Durable Objectの公開クラス名 `ProviderState`、`STATE` バインディン
 `npm test` は `test/**/*.test.mjs` を引用付きでNodeに渡し、サブディレクトリを含む全件を実行します。
 公式スイートの実行コマンド、CIマトリクス、成果物の保存先は変更しません。
 実行方法は [setup.md](setup.md)、日次更新は [conformance-updates.md](conformance-updates.md) を参照してください。
+
+動的登録は `src/oidc/registration.ts` でメタデータを検証し、`clients.ts` 経由で
+静的登録と同じ認可・トークン処理に渡します。登録情報は `storage/` で件数制限とともに永続化します。

@@ -13,6 +13,7 @@ import { userinfo } from "./oidc/userinfo";
 import { publicKey } from "./shared/crypto";
 import { requireThat } from "./shared/types";
 import { json, fail } from "./shared/http";
+import { register } from "./oidc/registration";
 export class Provider {
   private clients: Federation;
   private login: Login;
@@ -44,6 +45,8 @@ export class Provider {
       return authorize(c, this.store, this.clients, this.login, r).catch(() =>
         authorizationFailure(),
       );
+    if (path === "/register" && r.method === "POST")
+      return register(c, this.store, r);
     if (path === "/par" && r.method === "POST")
       return par(c, this.store, this.clients, r);
     if (path === "/login" && r.method === "POST") return this.login.login(r);

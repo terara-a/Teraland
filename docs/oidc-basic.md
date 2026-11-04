@@ -72,6 +72,8 @@ CONFORMANCE_PROFILE=basic npm run test:conformance
 ```
 
 プランは `oidcc-basic-certification-test-plan`、discovery＋static_client構成です。
+動的登録は [動的クライアント登録](oidc-registration.md) を参照してください。
+
 公式プラン自身が固定するcodeフロー・client_secret_basic／postのvariantをそのまま使います。
 この構成で適用される35モジュールをすべて実行します。動的登録専用の3モジュールは、
 公式のvariant選択によってこの構成の対象から外れます。

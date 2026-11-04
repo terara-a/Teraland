@@ -1,6 +1,6 @@
 # Teraland
 
-Cloudflare Workers 向けの TypeScript 製 OpenID Provider。SQLite-backed Durable Objects で認証状態を管理し、OpenID Federation の OP 自動クライアント登録と、事前登録クライアントによる OIDC Core Basic を対象にしています。
+Cloudflare Workers 向けの TypeScript 製 OpenID Provider。SQLite-backed Durable Objects で認証状態を管理し、OpenID Federation の OP 自動クライアント登録と、事前登録・動的登録クライアントによる OIDC Core Basic を対象にしています。
 
 個人 PoC 用です。公式適合性テストの全件合格・認証取得や、本番運用の準備は完了していません。
 
@@ -19,6 +19,8 @@ Cloudflare Workers 向けの TypeScript 製 OpenID Provider。SQLite-backed Dura
 
 `trust_chain` header 自体は信用せず、ネットワークからチェーンを再構築します。未対応の metadata policy / constraints / critical extension を含むチェーン、未対応の ID Token 署名・暗号化要求は拒否します。
 
+初期アクセストークンで保護した動的クライアント登録は [設定手順](docs/oidc-registration.md) を参照してください。
+
 ## 未対応
 
-metadata policy の合成、constraints、trust marks、explicit registration、intermediary / trust anchor としての fetch/list/resolve、鍵ローテーション、OIDC動的クライアント登録、refresh token、ユーザー管理、パスワードハッシュ、レート制限、監査・運用監視は未実装です。
+metadata policy の合成、constraints、trust marks、explicit registration、intermediary / trust anchor としての fetch/list/resolve、鍵ローテーション、動的登録の管理API、refresh token、ユーザー管理、パスワードハッシュ、レート制限、監査・運用監視は未実装です。

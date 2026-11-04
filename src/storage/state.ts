@@ -16,13 +16,27 @@ export class ProviderState extends DurableObject {
       const live = current && current.exp > now() ? current : undefined;
       switch (m.op) {
         case "put":
-        case "once": {
+        case "once":
+        case "register": {
           const value = obj(m.value);
           requireThat(
             typeof value.exp === "number" && value.exp > now(),
             "expired state",
           );
-          if (m.op === "once" && live) return false;
+          if ((m.op === "once" || m.op === "register") && live) return false;
+          if (m.op === "register") {
+            requireThat(key.startsWith("client:"), "Invalid registration key");
+            const clients = await tx.list<Entry>({
+              prefix: "client:",
+              limit: 257,
+            });
+            let count = 0;
+            for (const [id, client] of clients) {
+              if (client.exp <= now()) await tx.delete(id);
+              else count++;
+            }
+            if (count >= 256) return false;
+          }
           await tx.put(key, value);
           return true;
         }

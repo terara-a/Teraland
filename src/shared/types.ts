@@ -15,6 +15,7 @@ export interface Env {
   DEV_MODE?: string;
   STATIC_CLIENTS?: string;
   USER_CLAIMS?: string;
+  DYNAMIC_REGISTRATION_TOKEN?: string;
 }
 export interface Config {
   issuer: string;
@@ -26,6 +27,7 @@ export interface Config {
   anchors: Record<string, JWKS>;
   clients: Record<string, ObjectMap>;
   userClaims: ObjectMap;
+  registrationToken?: string;
 }
 export interface AuthRequest {
   claims: ObjectMap;

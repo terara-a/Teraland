@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 teraland_output=artifacts/conformance
 if [ "${CONFORMANCE_PROFILE:-federation}" = basic ]; then teraland_output=artifacts/conformance-basic; fi
+if [ "${CONFORMANCE_PROFILE:-federation}" = basic-dynamic ]; then teraland_output=artifacts/conformance-basic-dynamic; fi
 mkdir -p "$teraland_output"
 # Do not leave reports from an older successful run after a startup/build failure.
 rm -f "$teraland_output/results.json" "$teraland_output/junit.xml" "$teraland_output/summary.md"

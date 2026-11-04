@@ -52,6 +52,11 @@ export function configuration(env: Env): Config {
     identifier(id);
     keySet(ks);
   }
+  requireThat(
+    env.DYNAMIC_REGISTRATION_TOKEN === undefined ||
+      env.DYNAMIC_REGISTRATION_TOKEN.length >= 32,
+    "Invalid registration token",
+  );
   return {
     issuer: env.ISSUER,
     signing,
@@ -61,6 +66,7 @@ export function configuration(env: Env): Config {
     hosts,
     anchors: anchors as Config["anchors"],
     clients: staticClients(env.STATIC_CLIENTS),
+    registrationToken: env.DYNAMIC_REGISTRATION_TOKEN,
     userClaims: userClaims(env.USER_CLAIMS),
   };
 }

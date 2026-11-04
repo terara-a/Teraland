@@ -11,7 +11,8 @@ import type { Store } from "../storage/state";
 import { base64url } from "jose";
 import {
   basicCredentials,
-  authenticateStatic,
+  registeredClient,
+  authenticateRegistered,
   type FederatedClients,
 } from "./clients";
 import { authenticate } from "./client-authentication";
@@ -29,8 +30,14 @@ export async function token(
   try {
     const credentials = basicCredentials(r, f);
     id = credentials.id;
-    const client = c.clients[id];
-    if (client) await authenticateStatic(client, credentials.secret, f);
+    const client = await registeredClient(c, store, id);
+    if (client)
+      await authenticateRegistered(
+        client,
+        credentials.secret,
+        f,
+        credentials.basic,
+      );
     else {
       requireThat(
         !r.headers.has("authorization") && !f.has("client_secret"),
