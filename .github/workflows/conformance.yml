@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   official-federation:
-    name: ${{ matrix.profile == 'basic' && 'official-oidc-basic' || format('official-federation ({0})', matrix.rp-signing-alg) }}
+    name: ${{ matrix.profile == 'federation' && format('official-federation ({0})', matrix.rp-signing-alg) || format('official-oidc-{0}', matrix.profile) }}
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +30,8 @@ jobs:
           - profile: federation
             rp-signing-alg: ES256
           - profile: basic
+            rp-signing-alg: RS256
+          - profile: basic-dynamic
             rp-signing-alg: RS256
     env:
       CONFORMANCE_PROFILE: ${{ matrix.profile }}

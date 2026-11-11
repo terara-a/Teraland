@@ -1,10 +1,12 @@
-import { equal } from "../shared/crypto";
+import type { Store } from "../storage/state";
+import { equal, hash } from "../shared/crypto";
 import {
   now,
   obj,
   str,
   strings,
   requireThat,
+  type Config,
   type AuthRequest,
   type ObjectMap,
 } from "../shared/types";
@@ -62,7 +64,11 @@ export function basicRequest(
   client: ObjectMap,
   params: URLSearchParams,
 ): AuthRequest {
-  return { claims: Object.fromEntries(params), client, exp: now() + 300 };
+  return {
+    claims: Object.fromEntries(params),
+    client,
+    exp: Math.min(now() + 300, Number(client.trust_exp)),
+  };
 }
 export function basicCredentials(request: Request, form: URLSearchParams) {
   const header = request.headers.get("authorization");
@@ -91,15 +97,37 @@ export function basicCredentials(request: Request, form: URLSearchParams) {
     basic: true,
   };
 }
-export async function authenticateStatic(
+export async function authenticateRegistered(
   client: ObjectMap,
   secret: string,
   form: URLSearchParams,
+  basic = false,
 ) {
   requireThat(
     !form.has("client_assertion") &&
       secret &&
-      (await equal(secret, str(client, "client_secret"))),
+      (client.dynamic_client
+        ? await equal(await hash(secret), str(client, "client_secret_hash"))
+        : await equal(secret, str(client, "client_secret"))),
     "Invalid client authentication",
+  );
+  if (client.dynamic_client)
+    requireThat(
+      client.token_endpoint_auth_method ===
+        (basic ? "client_secret_basic" : "client_secret_post"),
+      "Client authentication method mismatch",
+    );
+}
+
+export async function registeredClient(
+  c: Config,
+  store: Store,
+  id: string,
+): Promise<ObjectMap | undefined> {
+  if (Object.hasOwn(c.clients, id)) return c.clients[id];
+  if (!c.registrationToken || !/^dcr_[a-f0-9-]{68}$/.test(id)) return undefined;
+  return (
+    (await store.call<ObjectMap | null>("get", "client:" + (await hash(id)))) ??
+    undefined
   );
 }

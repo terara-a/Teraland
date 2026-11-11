@@ -1,5 +1,8 @@
 import { requireThat } from "./types";
-export async function limitedText(body: ReadableStream<Uint8Array> | null) {
+export async function limitedText(
+  body: ReadableStream<Uint8Array> | null,
+  limit = 1048576,
+) {
   if (!body) return "";
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -9,7 +12,7 @@ export async function limitedText(body: ReadableStream<Uint8Array> | null) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      requireThat(size <= 1048576, "document too large");
+      requireThat(size <= limit, "document too large");
       chunks.push(value);
     }
   } finally {

@@ -31,7 +31,7 @@ export async function issueCode(
     subject,
     authTime,
     exp: Math.min(now() + 60, num(a.client, "trust_exp")),
-    ...(a.client.static_client
+    ...(a.client.static_client || a.client.dynamic_client
       ? {
           userinfo: selectedClaims(
             c.userClaims,

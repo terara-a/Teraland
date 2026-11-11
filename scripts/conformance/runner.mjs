@@ -18,18 +18,28 @@ import {
   negativesSuccessful,
 } from "./federation/negative-checks.mjs";
 const [suiteDir, runDir, mongoPort] = process.argv.slice(2);
-const basic = process.env.CONFORMANCE_PROFILE === "basic";
+const dynamic = process.env.CONFORMANCE_PROFILE === "basic-dynamic";
+const basic = dynamic || process.env.CONFORMANCE_PROFILE === "basic";
 if (
   process.env.CONFORMANCE_PROFILE &&
-  !["basic", "federation"].includes(process.env.CONFORMANCE_PROFILE)
+  !["basic", "basic-dynamic", "federation"].includes(
+    process.env.CONFORMANCE_PROFILE,
+  )
 )
   throw new Error("Invalid conformance profile");
 const basicProfile = JSON.parse(
-  await readFile("scripts/conformance/basic/profile.json", "utf8"),
+  await readFile(
+    dynamic
+      ? "scripts/conformance/basic/dynamic-profile.json"
+      : "scripts/conformance/basic/profile.json",
+    "utf8",
+  ),
 );
-const outputDir = basic
-  ? "artifacts/conformance-basic"
-  : "artifacts/conformance";
+const outputDir = dynamic
+  ? "artifacts/conformance-basic-dynamic"
+  : basic
+    ? "artifacts/conformance-basic"
+    : "artifacts/conformance";
 let reviewedModules = JSON.parse(
   await readFile("scripts/conformance/federation/modules.json", "utf8"),
 );
@@ -160,9 +170,9 @@ async function writeResults() {
   const counts = {};
   for (const r of results) counts[r.outcome] = (counts[r.outcome] ?? 0) + 1;
   const policyText = basic
-    ? "Basic CI permits only the named optional-capability SKIPPED and manual REVIEW results in basic.json. These outcomes remain SKIPPED and REVIEW, never PASSED. Other warnings, failures and incomplete modules fail CI."
+    ? "Basic CI permits only the named optional-capability SKIPPED and manual REVIEW results in the reviewed Basic profile. These outcomes remain SKIPPED and REVIEW, never PASSED. Other warnings, failures and incomplete modules fail CI."
     : "CI accepts completed PASSED or REVIEW results only when all 13 negative response checks succeed. REVIEW still requires manual confirmation. WARNING, SKIPPED, FAILED and incomplete results fail CI.";
-  const summary = `## Official OpenID ${basic ? "Connect Core Basic" : "Federation OP"}\n\nSuite commit: \`${pin.commit}\`\n\nRP signing algorithm: \`${rpSigningAlg}\`\n\nRecorded module outcomes: ${results.length}/${pin.expectedModules}\n\n${Object.entries(
+  const summary = `## Official OpenID ${dynamic ? "Connect Core Basic (dynamic clients)" : basic ? "Connect Core Basic" : "Federation OP"}\n\nSuite commit: \`${pin.commit}\`\n\nRP signing algorithm: \`${rpSigningAlg}\`\n\nRecorded module outcomes: ${results.length}/${pin.expectedModules}\n\n${Object.entries(
     counts,
   )
     .map(([k, v]) => `- ${k}: ${v}`)
@@ -188,6 +198,7 @@ try {
     ),
   );
   const password = crypto.randomUUID();
+  const registrationToken = crypto.randomUUID() + crypto.randomUUID();
   const clientSecret = crypto.randomUUID();
   const secondClientSecret = crypto.randomUUID();
   const options = convertV4MiniflareOptions({
@@ -206,18 +217,25 @@ try {
       TRUST_ANCHORS: JSON.stringify({ [anchor]: { keys: [publicAnchor] } }),
       ...(basic
         ? {
-            STATIC_CLIENTS: JSON.stringify([
-              {
-                client_id: "basic-ci",
-                client_secret: clientSecret,
-                redirect_uris: [suite + "/test/a/" + alias + "/callback"],
-              },
-              {
-                client_id: "basic-ci-two",
-                client_secret: secondClientSecret,
-                redirect_uris: [suite + "/test/a/" + alias + "/callback"],
-              },
-            ]),
+            ...(dynamic
+              ? { DYNAMIC_REGISTRATION_TOKEN: registrationToken }
+              : {}),
+            STATIC_CLIENTS: JSON.stringify(
+              dynamic
+                ? []
+                : [
+                    {
+                      client_id: "basic-ci",
+                      client_secret: clientSecret,
+                      redirect_uris: [suite + "/test/a/" + alias + "/callback"],
+                    },
+                    {
+                      client_id: "basic-ci-two",
+                      client_secret: secondClientSecret,
+                      redirect_uris: [suite + "/test/a/" + alias + "/callback"],
+                    },
+                  ],
+            ),
             USER_CLAIMS: JSON.stringify({
               name: "CI User",
               family_name: "User",
@@ -365,17 +383,23 @@ try {
             discoveryUrl: issuer + "/.well-known/openid-configuration",
           },
           client_secret_post: {
-            client_id: "basic-ci",
-            client_secret: clientSecret,
+            ...(dynamic
+              ? { initial_access_token: registrationToken }
+              : { client_id: "basic-ci", client_secret: clientSecret }),
           },
           client2: {
-            client_id: "basic-ci-two",
-            client_secret: secondClientSecret,
+            ...(dynamic
+              ? { initial_access_token: registrationToken }
+              : {
+                  client_id: "basic-ci-two",
+                  client_secret: secondClientSecret,
+                }),
             jwks: { keys: [rpSigning] },
           },
           client: {
-            client_id: "basic-ci",
-            client_secret: clientSecret,
+            ...(dynamic
+              ? { initial_access_token: registrationToken }
+              : { client_id: "basic-ci", client_secret: clientSecret }),
             jwks: { keys: [rpSigning] },
           },
         }
@@ -443,7 +467,11 @@ try {
     planName: pin.plan,
     variant: JSON.stringify({
       server_metadata: "discovery",
-      client_registration: basic ? "static_client" : "automatic",
+      client_registration: dynamic
+        ? "dynamic_client"
+        : basic
+          ? "static_client"
+          : "automatic",
     }),
   });
   const plan = await api("/api/plan?" + query, config);
@@ -506,7 +534,7 @@ try {
       .map((k) => `${k}=${results.filter((r) => r.outcome === k).length}`)
       .join("; ");
     console.log(
-      `::notice title=Official ${basic ? "OIDC Basic" : "Federation"} outcomes::rp_signing_alg=${rpSigningAlg}; recorded=${results.length}; expected=${pin.expectedModules}; ${outcomes}`,
+      `::notice title=Official ${dynamic ? "OIDC Basic dynamic" : basic ? "OIDC Basic" : "Federation"} outcomes::rp_signing_alg=${rpSigningAlg}; recorded=${results.length}; expected=${pin.expectedModules}; ${outcomes}`,
     );
     if (!basic)
       console.log(

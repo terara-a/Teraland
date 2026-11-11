@@ -51,3 +51,6 @@ Basicの確認済み構成は `scripts/conformance/basic/profile.json` で固定
 
 上流のJavaアノテーションが動的な指定などに変わって解析できない場合は、安全側に失敗し、
 固定SHAを更新しません。その場合は上流差分を確認して更新スクリプトを修正してください。
+
+動的登録のBasic 38件も `basic-dynamic` として検証します。確認済み構成は
+`scripts/conformance/basic/dynamic-profile.json` で管理し、静的35件・Federation3アルゴリズムと併せて実行ゲートを確認します。
